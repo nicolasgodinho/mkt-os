@@ -109,6 +109,9 @@ that first needs them. Do not add empty packages.
    contract key (`type.vN`). Handlers must be safe to run twice (at-least-once delivery).
    Domain writes must commit in the same transaction as completion, through a dedicated
    `worker.*` SQL function that checks the lease.
+   `jobs.result` is a small diagnostic summary only. Domain outputs (proposed facts, drafts, …)
+   belong in their domain tables, never in `jobs.result` (docs/08 §1: AI is a service layer,
+   not the data model).
 4. Enqueue with a deterministic key from `jobIdempotencyKey(contract, parts)`.
 5. Tests: contract unit tests, handler unit tests (FakeQueue), a pgTAP test for any new SQL,
    and an integration test.
@@ -141,5 +144,7 @@ and enable "Require review from Code Owners".
 
 Production and staging (when they exist): give `jmos_worker` a secret password through the
 platform's secret management (`alter role jmos_worker with login password …`). The seed password
-is local-only. Connect the worker directly or through the pooler; it does not use server-side
+is local-only. Never apply `supabase/seed.sql` to a network-reachable database: if Supabase
+Branching or preview databases are enabled, disable seeding there, or remove the worker login
+from the seed first. Connect the worker directly or through the pooler; it does not use server-side
 prepared statements, so transaction-mode pooling works.
