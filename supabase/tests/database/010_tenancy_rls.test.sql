@@ -12,7 +12,7 @@ create function pg_temp.make_user(p_id uuid, p_email text) returns void language
   insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
   values (p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
           p_email, now(), now());
-  insert into public.users (id, display_name) values (p_id, p_email);
+  insert into public.users (id, display_name) values (p_id, p_email) on conflict (id) do nothing;
 $$;
 
 -- Impersonates a signed-in user the way PostgREST does (JWT claims + role). Undo with RESET ROLE.
