@@ -10,9 +10,15 @@
 # Protected executable invariants (authority:TEST_SPEC)
 /tests/acceptance/      @nicolasgodinho
 
-# CI and repository policy
+# CI and repository policy, and the verification contract
 /.github/               @nicolasgodinho
 /scripts/ci/            @nicolasgodinho
+/scripts/verify.mjs     @nicolasgodinho
+/scripts/db/            @nicolasgodinho
+/vitest.config.ts       @nicolasgodinho
+/playwright.config.ts   @nicolasgodinho
+/supabase/tests/database/000_*  @nicolasgodinho
+/supabase/tests/database/001_*  @nicolasgodinho
 
 # Schema history (append-only)
 /supabase/migrations/   @nicolasgodinho

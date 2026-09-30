@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 3100;
+// Uncommon default so a developer's own dev servers (3000, 3100, …) never collide with E2E.
+const PORT = Number(process.env.JMOS_E2E_PORT ?? 3917);
 const baseURL = `http://127.0.0.1:${String(PORT)}`;
 const isCI = process.env.CI !== undefined;
 
