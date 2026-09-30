@@ -1,7 +1,7 @@
 # ADR 0001 — PostgreSQL Job Queue with SKIP LOCKED
 
-- **Status:** proposed
-- **Date:** 2026-09-30
+- **Status:** accepted
+- **Date:** 2026-09-30 (proposed and accepted)
 - **Scope:** infrastructure for the job transport. The job contract (`docs/08 §5`) and the
   AI Job state machine (`docs/04`) are unchanged.
 - **Requires:** `authority:ARCHITECTURE_CHANGE` (this file lives under `/docs`).
@@ -38,6 +38,23 @@ Implement the queue as the `public.jobs` table itself (migration
   `jmos_worker` role.
 
 pgmq is **not** used at this time.
+
+### Mapping to the `docs/04` AI Job state machine
+
+The persisted statuses are `queued`, `running`, `retry_wait`, `completed`, `failed`,
+`dead_letter` and `canceled`. Their meaning is unchanged. Two representation choices apply:
+
+- **`LEASED/RUNNING` is one status, `running`,** with `lease_owner`/`lease_until` set.
+- **`RETRY_WAIT → QUEUED` is not persisted as a separate step.** A `retry_wait` job whose
+  `run_after` has passed is eligible exactly like a `queued` job, and `claim_job` moves it to
+  `running` atomically. A due `retry_wait` job is therefore shown as `retry_wait` until it is leased.
+- **Lease expiry** (the worker died or stalled) returns a `running` job to `queued`, or to
+  `dead_letter` when attempts are exhausted. This is the redelivery that the lease fields of
+  `docs/08 §5` exist for; it is recorded in `last_error` (`lease_expired`). Recovery runs when any
+  worker next calls `claim_job`. Until then, a job whose lease has expired stays `running`, and
+  the job center (Increment 3) must present it as stalled.
+- **`canceled`** is reserved. It becomes reachable when the job center adds cancel/retry
+  (Increment 3).
 
 ## Invariants and evidence
 
@@ -89,6 +106,11 @@ Risks and limits:
   single-GPU topology in `docs/08 §2`.
 - **No per-tenant fairness.** Ordering is priority, then due time. One tenant's backlog can delay
   others at equal priority.
+- **The queue is cross-tenant by design.** A worker is shared agency infrastructure (`docs/08 §2`)
+  and leases jobs of every workspace. Isolation holds because every worker read of domain data
+  must go through `worker.*` functions scoped to the **leased job's** workspace/client and lease
+  (checked by `worker_id` and `attempt`). Never add a worker function that queries across
+  tenants or accepts a tenant id that is not the leased job's.
 
 ## Criteria for revisiting
 
@@ -119,4 +141,7 @@ functions, with the same signatures.
 
 ## Approval
 
-Pending: Nicolas (applies `authority:ARCHITECTURE_CHANGE` and merges).
+Accepted on 2026-09-30 by Nicolas Godinho (repository owner), who instructed it in the
+Increment 0 closure task. On that instruction, the agent applied `authority:ARCHITECTURE_CHANGE`
+to PR #2. Review notes: the job contract (`docs/08 §5`) is fully represented; the state
+mapping above keeps `docs/04` meaning; no frozen invariant from `docs/00 §6` is affected.
