@@ -91,8 +91,9 @@ that first needs them. Do not add empty packages.
   - `tests/acceptance/` → `authority:TEST_SPEC`
   - `docs/`, `AGENTS.md`, `.github/workflows/`, `scripts/ci/` → `authority:ARCHITECTURE_CHANGE`
 
-  CI runs the policy from the **base branch**, so a PR cannot weaken its own check. Real
-  enforcement also needs branch protection with required reviews (see "Pending human setup").
+  CI runs the policy from the **base branch**, so a PR cannot weaken its own check. The policy
+  runs inside the required `verify` check, so a protected change cannot merge without its label.
+  Labels are applied by a human (Nicolas); agents never apply `authority:*` labels themselves.
 - **Contracts are generated, never hand-copied.** Job payload schemas live in `packages/core`
   (zod). `pnpm contracts:generate` writes the JSON Schema used by the Python worker, and
   `pnpm contracts:check` (part of verify) fails on drift.
@@ -112,10 +113,33 @@ that first needs them. Do not add empty packages.
 5. Tests: contract unit tests, handler unit tests (FakeQueue), a pgTAP test for any new SQL,
    and an integration test.
 
-## Pending human setup (cannot be done from the repository)
+## Git workflow
 
-- Push to GitHub and enable branch protection on `main`: require the `verify` check and at least
-  one review. Add a `CODEOWNERS` file with real maintainer handles for the protected paths.
-- Create the labels `authority:TEST_SPEC` and `authority:ARCHITECTURE_CHANGE`.
-- Production/staging: give `jmos_worker` a secret password through the platform's secret
-  management (`alter role jmos_worker with login password …`). The seed password is local-only.
+`main` is protected: every change goes through a pull request, and the required `verify`
+check (the same `pnpm verify`, against real Supabase) must pass on a branch that is up to date
+with `main`. Force pushes and branch deletion are blocked, and the rules apply to admins too.
+
+```text
+feature branch / worktree → implement → pnpm verify → review → PR → CI (verify) → merge
+```
+
+- Branch names: `feat/…`, `fix/…`, `chore/…`, `adr/…`, `test-spec/…`.
+- Never commit directly to `main`, and never rewrite its history.
+- The baseline is commit `67b6163` (Increment 0). Migrations up to that commit are historical.
+
+## GitHub configuration (current)
+
+| Setting | Value |
+|---|---|
+| Branch protection on `main` | PR required (0 approvals, see note), `verify` required, strict up-to-date, conversation resolution, admins included, no force push, no deletion |
+| Labels | `authority:TEST_SPEC`, `authority:ARCHITECTURE_CHANGE` |
+| CODEOWNERS | `.github/CODEOWNERS` (protected paths → `@nicolasgodinho`) |
+
+Note: required approvals are 0 because the repository has a single maintainer and GitHub does
+not let an author approve their own PR. When a second maintainer joins, raise the count to 1
+and enable "Require review from Code Owners".
+
+Production and staging (when they exist): give `jmos_worker` a secret password through the
+platform's secret management (`alter role jmos_worker with login password …`). The seed password
+is local-only. Connect the worker directly or through the pooler; it does not use server-side
+prepared statements, so transaction-mode pooling works.

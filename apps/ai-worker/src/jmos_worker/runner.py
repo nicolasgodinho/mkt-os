@@ -147,7 +147,21 @@ class Worker:
                 started,
             )
         else:
-            outcome = self._queue.complete(job, output)
+            try:
+                outcome = self._queue.complete(job, output)
+            except psycopg.IntegrityError:
+                # The database refused the result (e.g. the result size limit). Retrying would
+                # produce the same result, so fail permanently instead of crash-looping.
+                logger.exception("database rejected the job result", extra=context)
+                self._record_failure(
+                    job,
+                    JobError(
+                        "result_rejected", "database rejected the job result", retryable=False
+                    ),
+                    context,
+                    started,
+                )
+                return
             level = logging.INFO if outcome is CompletionOutcome.COMPLETED else logging.WARNING
             logger.log(
                 level,

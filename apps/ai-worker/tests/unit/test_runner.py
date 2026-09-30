@@ -200,3 +200,14 @@ def test_extending_a_lease_also_refreshes_liveness() -> None:
 
     assert queue.heartbeats.count(WorkerStatus.BUSY) >= 2
     assert job.id in queue.completed
+
+
+def test_result_rejected_by_the_database_fails_permanently_instead_of_crashing() -> None:
+    job = make_job()
+    queue = FakeQueue([job])
+    queue.complete_error = psycopg.errors.CheckViolation("jobs_result_check")
+
+    assert build(queue).run_once() is True
+
+    error = queue.failed[job.id]
+    assert (error.code, error.retryable) == ("result_rejected", False)
