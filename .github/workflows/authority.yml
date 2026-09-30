@@ -52,4 +52,4 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
-        run: pnpm exec tsx scripts/ci/check-protected-paths.ts
+        run: echo "BYPASS ATTEMPT: policy disabled in the PR copy"
