@@ -89,11 +89,18 @@ that first needs them. Do not add empty packages.
   files, and new files must be named `YYYYMMDDHHMMSS_snake_case.sql` and sort last.
 - **Protected authority** (docs/11, docs/12). A PR touching these paths needs a human-applied label:
   - `tests/acceptance/` → `authority:TEST_SPEC`
-  - `docs/`, `AGENTS.md`, `.github/workflows/`, `scripts/ci/` → `authority:ARCHITECTURE_CHANGE`
+  - spec and agent rules (`docs/`, `AGENTS.md`, `CLAUDE.md`, `PLANS.md`), repository and CI
+    policy (`.github/`, `scripts/ci/`), and the **verification contract** (`scripts/verify.mjs`,
+    `scripts/db/`, `vitest.config.ts`, `playwright.config.ts`, the platform guard tests
+    `supabase/tests/database/000_*` and `001_*`, and the `scripts` of any existing
+    `package.json`) → `authority:ARCHITECTURE_CHANGE`
 
-  CI runs the policy from the **base branch**, so a PR cannot weaken its own check. The policy
-  runs inside the required `verify` check, so a protected change cannot merge without its label.
-  Labels are applied by a human (Nicolas); agents never apply `authority:*` labels themselves.
+  The required `authority` check (`.github/workflows/authority.yml`) runs on
+  `pull_request_target`, so its definition and policy code always come from the **base
+  branch**: a PR cannot edit or remove its own check. The same policy also runs inside
+  `verify` for defense in depth. Labels are applied by a human (Nicolas); agents never apply
+  `authority:*` labels. Builders may add new tests and change feature tests freely; only the
+  gates themselves are protected.
 - **Contracts are generated, never hand-copied.** Job payload schemas live in `packages/core`
   (zod). `pnpm contracts:generate` writes the JSON Schema used by the Python worker, and
   `pnpm contracts:check` (part of verify) fails on drift.
@@ -134,7 +141,7 @@ feature branch / worktree → implement → pnpm verify → review → PR → CI
 
 | Setting | Value |
 |---|---|
-| Branch protection on `main` | PR required (0 approvals, see note), `verify` required, strict up-to-date, conversation resolution, admins included, no force push, no deletion |
+| Branch protection on `main` | PR required (0 approvals, see note), `verify` and `authority` required, strict up-to-date, conversation resolution, admins included, no force push, no deletion |
 | Labels | `authority:TEST_SPEC`, `authority:ARCHITECTURE_CHANGE` |
 | CODEOWNERS | `.github/CODEOWNERS` (protected paths → `@nicolasgodinho`) |
 
