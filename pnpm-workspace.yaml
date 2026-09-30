@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependencies allowed to run install scripts (pnpm blocks lifecycle scripts by default).
+onlyBuiltDependencies:
+  - supabase
+  - esbuild
+  - sharp
+  - unrs-resolver

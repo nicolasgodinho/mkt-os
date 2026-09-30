@@ -1,0 +1,51 @@
+{
+  "name": "jansen-marketing-os",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @jmos/web dev",
+    "build": "pnpm --filter @jmos/web build",
+    "setup:py": "node scripts/py.mjs --setup",
+    "worker": "pnpm --filter @jmos/ai-worker start",
+    "format": "prettier --write . && pnpm --filter @jmos/ai-worker format",
+    "format:check": "prettier --check . && pnpm --filter @jmos/ai-worker format:check",
+    "lint": "eslint . --max-warnings 0 && pnpm --filter @jmos/ai-worker lint",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
+    "contracts:generate": "tsx scripts/generate-contracts.ts",
+    "contracts:check": "tsx scripts/generate-contracts.ts --check",
+    "test:unit": "vitest run --project unit && pnpm --filter @jmos/ai-worker test",
+    "test:acceptance": "vitest run --project acceptance --passWithNoTests",
+    "db:reset": "tsx scripts/db/cli.ts reset",
+    "db:test": "tsx scripts/db/cli.ts test",
+    "db:serve": "tsx scripts/db/cli.ts serve",
+    "db:types": "supabase gen types typescript --local --schema public",
+    "test:integration": "tsx scripts/db/cli.ts integration",
+    "test:e2e": "playwright test",
+    "verify": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-pgtap": "^0.0.9",
+    "@electric-sql/pglite-socket": "^0.2.11",
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "16.3.7",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.4",
+    "@types/pg": "^8.23.1",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "pg": "^8.23.0",
+    "prettier": "^3.9.9",
+    "supabase": "^2.118.0",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@jmos/ai-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Python AI Worker. This manifest only wires Python tooling into pnpm scripts.",
+  "scripts": {
+    "start": "node ../../scripts/py.mjs -m jmos_worker run",
+    "check": "node ../../scripts/py.mjs -m jmos_worker check",
+    "format": "node ../../scripts/py.mjs -m ruff format .",
+    "format:check": "node ../../scripts/py.mjs -m ruff format --check .",
+    "lint": "node ../../scripts/py.mjs -m ruff check .",
+    "typecheck": "node ../../scripts/py.mjs -m mypy",
+    "test": "node ../../scripts/py.mjs -m pytest"
+  }
+}

@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+@import '@jmos/ui/styles.css';
+
+/* Workspace UI package classes live outside this app; tell Tailwind to scan them. */
+@source '../../../../packages/ui/src';

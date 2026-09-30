@@ -1,0 +1,105 @@
+/*
+ * Jansen Marketing OS design tokens (docs/07 "UI system patterns").
+ * Components use semantic tokens only, never raw palette colors, so the brand can be
+ * re-themed in this one file. Import it after `tailwindcss` in the app stylesheet.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(0.985 0.002 264);
+  --foreground: oklch(0.22 0.02 264);
+  --surface: oklch(1 0 0);
+  --surface-muted: oklch(0.965 0.004 264);
+  --muted-foreground: oklch(0.52 0.02 264);
+  --border: oklch(0.91 0.006 264);
+  --ring: oklch(0.55 0.15 264);
+
+  --primary: oklch(0.45 0.15 264);
+  --primary-foreground: oklch(0.985 0 0);
+
+  --status-neutral: oklch(0.52 0.02 264);
+  --status-neutral-surface: oklch(0.955 0.004 264);
+  --status-info: oklch(0.48 0.15 250);
+  --status-info-surface: oklch(0.95 0.03 250);
+  --status-success: oklch(0.47 0.12 150);
+  --status-success-surface: oklch(0.95 0.04 150);
+  --status-warning: oklch(0.5 0.12 70);
+  --status-warning-surface: oklch(0.96 0.05 85);
+  --status-danger: oklch(0.5 0.18 27);
+  --status-danger-surface: oklch(0.95 0.03 27);
+}
+
+.dark {
+  --background: oklch(0.17 0.01 264);
+  --foreground: oklch(0.95 0.005 264);
+  --surface: oklch(0.21 0.012 264);
+  --surface-muted: oklch(0.25 0.014 264);
+  --muted-foreground: oklch(0.7 0.015 264);
+  --border: oklch(0.3 0.014 264);
+  --ring: oklch(0.7 0.13 264);
+
+  --primary: oklch(0.72 0.13 264);
+  --primary-foreground: oklch(0.17 0.01 264);
+
+  --status-neutral: oklch(0.75 0.015 264);
+  --status-neutral-surface: oklch(0.27 0.014 264);
+  --status-info: oklch(0.78 0.11 250);
+  --status-info-surface: oklch(0.28 0.05 250);
+  --status-success: oklch(0.78 0.12 150);
+  --status-success-surface: oklch(0.28 0.05 150);
+  --status-warning: oklch(0.82 0.12 85);
+  --status-warning-surface: oklch(0.3 0.05 85);
+  --status-danger: oklch(0.75 0.14 27);
+  --status-danger-surface: oklch(0.3 0.06 27);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-surface: var(--status-neutral-surface);
+  --color-status-info: var(--status-info);
+  --color-status-info-surface: var(--status-info-surface);
+  --color-status-success: var(--status-success);
+  --color-status-success-surface: var(--status-success-surface);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-surface: var(--status-warning-surface);
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-surface: var(--status-danger-surface);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}

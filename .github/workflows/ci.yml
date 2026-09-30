@@ -1,0 +1,86 @@
+# Reproduces `pnpm verify` against the real Supabase stack (docs/11 "CI command contract").
+# A merge is not healthy unless formatting, lint, types, contracts, unit, migrations,
+# pgTAP/RLS, integration, build and E2E all pass.
+# Protected path (docs/11): changes here need the "authority:ARCHITECTURE_CHANGE" label.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      JMOS_DB_MODE: supabase # never fall back to PGlite in CI
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Protected authority and append-only migrations
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          # Run the policy as it exists on the base branch, so a PR cannot weaken its own check.
+          if git cat-file -e "$BASE_SHA:scripts/ci/check-protected-paths.ts" 2>/dev/null; then
+            git worktree add --detach "$RUNNER_TEMP/policy-base" "$BASE_SHA"
+            POLICY_DIR="$RUNNER_TEMP/policy-base"
+          else
+            POLICY_DIR="$GITHUB_WORKSPACE"
+          fi
+          pnpm exec tsx "$POLICY_DIR/scripts/ci/check-protected-paths.ts"
+
+      - name: Set up the AI Worker environment
+        run: pnpm setup:py
+
+      - name: Start Supabase (local stack; Auth runs its own schema migrations)
+        run: pnpm exec supabase start
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify
+        run: pnpm verify
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Stop Supabase
+        if: always()
+        run: pnpm exec supabase stop --no-backup
