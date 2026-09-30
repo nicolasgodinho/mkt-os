@@ -115,6 +115,9 @@ class PostgresJobQueue:
                 autocommit=True,
                 connect_timeout=10,
                 application_name=f"jmos-worker:{self._worker_id}",
+                # No server-side prepared statements: they break behind transaction-mode poolers
+                # (e.g. Supabase's pooler) and the calls are cheap single-function statements.
+                prepare_threshold=None,
             )
         return self._conn
 

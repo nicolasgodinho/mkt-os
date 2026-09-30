@@ -13,6 +13,7 @@ import os
 import threading
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -199,3 +200,31 @@ def test_worker_role_is_least_privilege() -> None:
             query = sql.SQL("select 1 from {}").format(sql.Identifier("public", table))
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 conn.execute(query)
+
+
+def test_concurrent_workers_never_share_a_lease(admin: AdminConnection, workspace_id: UUID) -> None:
+    """FOR UPDATE SKIP LOCKED: every job is leased exactly once across competing workers.
+
+    Real concurrency only exists in supabase mode; PGlite serializes the two sessions.
+    """
+    job_ids = [
+        enqueue(admin, workspace_id, "system.healthcheck", f"it:{uuid4()}") for _ in range(20)
+    ]
+    workers = [make_worker(f"it-concurrent-{index}") for index in range(2)]
+
+    def drain(worker: Worker) -> None:
+        while worker.run_once():
+            pass
+
+    try:
+        with ThreadPoolExecutor(max_workers=len(workers)) as pool:
+            futures = [pool.submit(drain, worker) for worker, _ in workers]
+            for future in futures:
+                future.result(timeout=60)  # re-raises any exception from a worker thread
+    finally:
+        for _, queue in workers:
+            queue.close()
+
+    rows = [job_row(admin, job_id) for job_id in job_ids]
+    assert all(row["status"] == "completed" for row in rows)
+    assert all(row["attempts"] == 1 for row in rows), "a job was leased more than once"

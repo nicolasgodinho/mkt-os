@@ -89,10 +89,18 @@ that first needs them. Do not add empty packages.
   files, and new files must be named `YYYYMMDDHHMMSS_snake_case.sql` and sort last.
 - **Protected authority** (docs/11, docs/12). A PR touching these paths needs a human-applied label:
   - `tests/acceptance/` → `authority:TEST_SPEC`
-  - `docs/`, `AGENTS.md`, `.github/workflows/`, `scripts/ci/` → `authority:ARCHITECTURE_CHANGE`
+  - spec and agent rules (`docs/`, `AGENTS.md`, `CLAUDE.md`, `PLANS.md`), repository and CI
+    policy (`.github/`, `scripts/ci/`), and the **verification contract** (`scripts/verify.mjs`,
+    `scripts/db/`, `vitest.config.ts`, `playwright.config.ts`, the platform guard tests
+    `supabase/tests/database/000_*` and `001_*`, and the `scripts` of any existing
+    `package.json`) → `authority:ARCHITECTURE_CHANGE`
 
-  CI runs the policy from the **base branch**, so a PR cannot weaken its own check. Real
-  enforcement also needs branch protection with required reviews (see "Pending human setup").
+  The required `authority` check (`.github/workflows/authority.yml`) runs on
+  `pull_request_target`, so its definition and policy code always come from the **base
+  branch**: a PR cannot edit or remove its own check. The same policy also runs inside
+  `verify` for defense in depth. Labels are applied by a human (Nicolas); agents never apply
+  `authority:*` labels. Builders may add new tests and change feature tests freely; only the
+  gates themselves are protected.
 - **Contracts are generated, never hand-copied.** Job payload schemas live in `packages/core`
   (zod). `pnpm contracts:generate` writes the JSON Schema used by the Python worker, and
   `pnpm contracts:check` (part of verify) fails on drift.
@@ -108,14 +116,42 @@ that first needs them. Do not add empty packages.
    contract key (`type.vN`). Handlers must be safe to run twice (at-least-once delivery).
    Domain writes must commit in the same transaction as completion, through a dedicated
    `worker.*` SQL function that checks the lease.
+   `jobs.result` is a small diagnostic summary only. Domain outputs (proposed facts, drafts, …)
+   belong in their domain tables, never in `jobs.result` (docs/08 §1: AI is a service layer,
+   not the data model).
 4. Enqueue with a deterministic key from `jobIdempotencyKey(contract, parts)`.
 5. Tests: contract unit tests, handler unit tests (FakeQueue), a pgTAP test for any new SQL,
    and an integration test.
 
-## Pending human setup (cannot be done from the repository)
+## Git workflow
 
-- Push to GitHub and enable branch protection on `main`: require the `verify` check and at least
-  one review. Add a `CODEOWNERS` file with real maintainer handles for the protected paths.
-- Create the labels `authority:TEST_SPEC` and `authority:ARCHITECTURE_CHANGE`.
-- Production/staging: give `jmos_worker` a secret password through the platform's secret
-  management (`alter role jmos_worker with login password …`). The seed password is local-only.
+`main` is protected: every change goes through a pull request, and the required `verify`
+check (the same `pnpm verify`, against real Supabase) must pass on a branch that is up to date
+with `main`. Force pushes and branch deletion are blocked, and the rules apply to admins too.
+
+```text
+feature branch / worktree → implement → pnpm verify → review → PR → CI (verify) → merge
+```
+
+- Branch names: `feat/…`, `fix/…`, `chore/…`, `adr/…`, `test-spec/…`.
+- Never commit directly to `main`, and never rewrite its history.
+- The baseline is commit `67b6163` (Increment 0). Migrations up to that commit are historical.
+
+## GitHub configuration (current)
+
+| Setting | Value |
+|---|---|
+| Branch protection on `main` | PR required (0 approvals, see note), `verify` and `authority` required, strict up-to-date, conversation resolution, admins included, no force push, no deletion |
+| Labels | `authority:TEST_SPEC`, `authority:ARCHITECTURE_CHANGE` |
+| CODEOWNERS | `.github/CODEOWNERS` (protected paths → `@nicolasgodinho`) |
+
+Note: required approvals are 0 because the repository has a single maintainer and GitHub does
+not let an author approve their own PR. When a second maintainer joins, raise the count to 1
+and enable "Require review from Code Owners".
+
+Production and staging (when they exist): give `jmos_worker` a secret password through the
+platform's secret management (`alter role jmos_worker with login password …`). The seed password
+is local-only. Never apply `supabase/seed.sql` to a network-reachable database: if Supabase
+Branching or preview databases are enabled, disable seeding there, or remove the worker login
+from the seed first. Connect the worker directly or through the pooler; it does not use server-side
+prepared statements, so transaction-mode pooling works.

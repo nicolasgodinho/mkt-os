@@ -1,0 +1,55 @@
+# Protected-authority gate (docs/11 "Protected paths", docs/12 "Protected authority", AGENTS.md).
+#
+# Runs on `pull_request_target`: the workflow definition AND the policy code come from the BASE
+# branch, so a pull request can neither edit nor remove its own check. (A `pull_request` workflow
+# runs the PR's copy of itself, which a PR could rewrite.)
+#
+# Safety: this workflow never checks out or executes code from the pull request. It only fetches
+# the PR commits as data for `git diff`/`git show`. The token is read-only.
+# Protected path: changes here need the "authority:ARCHITECTURE_CHANGE" label.
+name: Authority
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authority-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  authority:
+    name: authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the base branch (trusted policy code)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Fetch the pull request commits (data only, never executed)
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install the base branch's tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Protected authority and append-only migrations
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: pnpm exec tsx scripts/ci/check-protected-paths.ts

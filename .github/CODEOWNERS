@@ -1,0 +1,24 @@
+# Owners of protected authority (docs/11 "Protected paths", docs/12 "Protected authority").
+# Changes here also need the matching `authority:*` label (see DEVELOPMENT.md).
+
+# Frozen specification, agent rules and architecture decisions (authority:ARCHITECTURE_CHANGE)
+/docs/                  @nicolasgodinho
+/AGENTS.md              @nicolasgodinho
+/CLAUDE.md              @nicolasgodinho
+/PLANS.md               @nicolasgodinho
+
+# Protected executable invariants (authority:TEST_SPEC)
+/tests/acceptance/      @nicolasgodinho
+
+# CI and repository policy, and the verification contract
+/.github/               @nicolasgodinho
+/scripts/ci/            @nicolasgodinho
+/scripts/verify.mjs     @nicolasgodinho
+/scripts/db/            @nicolasgodinho
+/vitest.config.ts       @nicolasgodinho
+/playwright.config.ts   @nicolasgodinho
+/supabase/tests/database/000_*  @nicolasgodinho
+/supabase/tests/database/001_*  @nicolasgodinho
+
+# Schema history (append-only)
+/supabase/migrations/   @nicolasgodinho
