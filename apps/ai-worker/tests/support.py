@@ -64,6 +64,7 @@ class FakeQueue:
         self.closed = False
         self.on_claim: Callable[[], None] | None = None
         self.on_heartbeat: Callable[[WorkerStatus], None] | None = None
+        self.complete_error: Exception | None = None
 
     def claim(self, job_types: Sequence[str]) -> LeasedJob | None:
         self.claimed_with.append(list(job_types))
@@ -75,6 +76,8 @@ class FakeQueue:
         return None
 
     def complete(self, job: LeasedJob, result: Mapping[str, object]) -> CompletionOutcome:
+        if self.complete_error is not None:
+            raise self.complete_error
         if job.id in self.completed:
             return CompletionOutcome.DUPLICATE
         self.completed[job.id] = dict(result)
