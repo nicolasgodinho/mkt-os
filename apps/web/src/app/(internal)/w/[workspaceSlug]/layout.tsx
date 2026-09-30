@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { AppShell } from '@jmos/ui';
+import { InternalCompactNavigation } from '@/components/internal-compact-navigation';
 import { InternalNavigation } from '@/components/internal-navigation';
 import { requireSessionUser } from '@/lib/auth/session';
 import { getWorkspaceBySlug, listMyWorkspaces } from '@/lib/identity/queries';
@@ -28,6 +29,7 @@ export default async function WorkspaceLayout({
       navigation={
         <InternalNavigation workspace={workspace} workspaces={workspaces} userEmail={user.email} />
       }
+      compactNavigation={<InternalCompactNavigation workspace={workspace} />}
     >
       {children}
     </AppShell>

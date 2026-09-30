@@ -473,6 +473,9 @@ declare
   v_capabilities public.capability[] := app.normalize_capabilities(p_capabilities);
 begin
   perform app.require_workspace_manager(v_uid, p_workspace_id);
+  -- Serialize membership changes per workspace so concurrent revocations cannot both pass the
+  -- "at least one active admin" check (time-of-check / time-of-use).
+  perform 1 from public.workspaces w where w.id = p_workspace_id for update;
 
   if p_role is null then
     raise exception 'role is required' using errcode = '22023';
@@ -526,6 +529,9 @@ declare
   v_before public.workspace_memberships;
 begin
   perform app.require_workspace_manager(v_uid, p_workspace_id);
+  -- Serialize membership changes per workspace so concurrent revocations cannot both pass the
+  -- "at least one active admin" check (time-of-check / time-of-use).
+  perform 1 from public.workspaces w where w.id = p_workspace_id for update;
 
   if p_user_id = v_uid then
     raise exception 'members cannot change their own membership' using errcode = '22023';

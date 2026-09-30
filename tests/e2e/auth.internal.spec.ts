@@ -14,7 +14,10 @@ test.describe('internal shell with a session', () => {
     await expect(page).toHaveURL(/\/w\/jansen$/);
     await expect(page.getByTestId('current-workspace')).toHaveText('Jansen Company');
 
-    await page.getByRole('link', { name: 'Clientes' }).click();
+    await page
+      .getByRole('navigation', { name: 'Navegação principal' })
+      .getByRole('link', { name: 'Clientes', exact: true })
+      .click();
     await expect(page.getByRole('link', { name: 'Cliente Demo A' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Cliente Demo B' })).toBeVisible();
     await expect(page.getByText('Cliente Alternativo C')).toHaveCount(0);
