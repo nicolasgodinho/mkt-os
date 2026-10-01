@@ -3,7 +3,7 @@
 -- input normalization, conflict recomputation edge cases, audit action names and idempotence.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(34);
+select plan(35);
 
 create function pg_temp.login_as(p_user uuid) returns void language plpgsql as $$
 begin
@@ -179,6 +179,18 @@ select set_eq($$ select id from public.effective_rules('e1000000-0000-4000-8000-
                  where subject = 'preco' $$,
   $$ select current_setting('b.h4')::uuid $$,
   'a channel soft rule applies, but does not unblock or replace the conflicting hard rules');
+
+select set_config('b.e1', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'MUST_NOT', 'girias', 'Sem gírias')::text, true);
+select set_config('b.e2', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'PREFER', 'girias', 'Prefira gírias leves no Instagram',
+  'instagram', 90)::text, true);
+select public.activate_rule(current_setting('b.e1')::uuid);
+select public.activate_rule(current_setting('b.e2')::uuid);
+select set_eq($$ select id from public.effective_rules('e1000000-0000-4000-8000-000000000001', 'instagram')
+                 where subject = 'girias' $$,
+  $$ select unnest(array[current_setting('b.e1')::uuid, current_setting('b.e2')::uuid]) $$,
+  'a narrower, higher-priority soft rule never shadows a client hard rule');
 
 select set_config('b.old', public.propose_rule('e1000000-0000-4000-8000-000000000001',
   current_setting('b.src1')::uuid, 'MUST', 'natal', 'Campanha de Natal', null, 50,

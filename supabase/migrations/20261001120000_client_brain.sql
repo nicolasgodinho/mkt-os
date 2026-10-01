@@ -907,8 +907,10 @@ $$;
 -- Rules valid at p_at and in scope are resolved per subject, with hard (MUST/MUST_NOT) and soft
 -- (PREFER/AVOID) rules resolved separately so a preference never shadows an obligation:
 --   * the narrower scope wins (channel over client), then the higher priority;
---   * if that winning level of a hard subject holds a rule in `conflict`, the subject has no
---     effective hard rule at all: nothing falls through to a lower level (no automatic winner);
+--   * rules in `conflict` take part in the ranking and are then dropped, so a conflict at the
+--     winning level leaves the subject without an effective hard rule: nothing falls through to
+--     a lower level (no automatic winner). Every hard rule valid at that level and moment is in
+--     the conflict, because they all overlap at p_at;
 --   * rules without a subject never shadow anything.
 create function public.effective_rules(
   p_client_id uuid,
@@ -947,20 +949,13 @@ as $$
            rank() over (partition by c.hard, coalesce(c.subject, c.id::text)
                         order by (c.scope_type = 'channel') desc, c.priority desc) as rk
       from candidates c
-  ),
-  winners as (
-    select k.*,
-           bool_or(k.status = 'conflict') over (partition by k.hard, coalesce(k.subject, k.id::text))
-             as blocked
-      from ranked k
-     where k.rk = 1
   )
-  select w.id, w.type, w.subject, w.statement, w.scope_type, w.channel, w.priority,
-         w.effective_from, w.effective_until, w.source_id
-    from winners w
-   where w.status = 'active'
-     and not w.blocked
-   order by w.subject nulls last, w.priority desc;
+  select k.id, k.type, k.subject, k.statement, k.scope_type, k.channel, k.priority,
+         k.effective_from, k.effective_until, k.source_id
+    from ranked k
+   where k.rk = 1
+     and k.status = 'active'
+   order by k.subject nulls last, k.priority desc;
 $$;
 
 create function public.rule_conflicts(p_client_id uuid)
