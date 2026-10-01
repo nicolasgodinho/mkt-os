@@ -7,11 +7,22 @@ export interface AppShellProps {
    */
   variant: 'internal' | 'portal';
   navigation: ReactNode;
+  /**
+   * Internal only: compact bar shown below the `md` breakpoint, where the sidebar is hidden.
+   * Desktop-first still has to leave a small screen with navigation and sign-out.
+   */
+  compactNavigation?: ReactNode;
   header?: ReactNode;
   children: ReactNode;
 }
 
-export function AppShell({ variant, navigation, header, children }: AppShellProps) {
+export function AppShell({
+  variant,
+  navigation,
+  compactNavigation,
+  header,
+  children,
+}: AppShellProps) {
   if (variant === 'internal') {
     return (
       <div className="flex min-h-dvh" data-shell="internal">
@@ -19,6 +30,9 @@ export function AppShell({ variant, navigation, header, children }: AppShellProp
           {navigation}
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
+          {compactNavigation ? (
+            <div className="border-b bg-surface px-4 py-2 md:hidden">{compactNavigation}</div>
+          ) : null}
           {header}
           <main id="main" className="flex-1 px-6 py-6">
             {children}
