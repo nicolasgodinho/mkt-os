@@ -69,6 +69,16 @@ test.describe('database API boundary (Auth + PostgREST + RLS)', () => {
     expect([...(result.data as string[])].sort()).toEqual([...CAPABILITIES].sort());
   });
 
+  test('self-signup is disabled: access is invite-only', async () => {
+    const config = requireSupabase();
+    const response = await fetch(`${config.url}/auth/v1/signup`, {
+      method: 'POST',
+      headers: { apikey: config.publicKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'self-signup@attacker.test', password: 'Sup3r-secret-pass!' }),
+    });
+    expect(response.ok).toBe(false);
+  });
+
   test('without a session nothing is readable or callable', async () => {
     const api = anonymousApi(requireSupabase());
     const clients = await api.select('clients', 'id');
