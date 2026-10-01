@@ -1,6 +1,6 @@
 # ExecPlan 0001 — Increment 1: Identity + Isolation
 
-Status: approved for build (autonomous run, 2026-09-30).
+Status: **completed** — merged into `main` at `b051f33` (2026-10-01) and approved by Nicolas.
 Spec anchor: `docs/13_MVP_BUILD_PLAN.md` → Increment 1 ("Workspace/User/Membership/Client; RLS;
 internal/client shells; cross-tenant acceptance tests").
 Contract: protected acceptance tests `tests/acceptance/increment-1/` (TEST_SPEC, commit
@@ -221,7 +221,7 @@ No production exists yet.
 
 ## Decisions (reversible)
 
-- **D1.** The default capability table above. It is spec-consistent; the non-frozen rows can be
+- **D1.** The default capability table above. **Confirmed by Nicolas on 2026-10-01.** It is spec-consistent; the non-frozen rows can be
   tuned by a human without TEST_SPEC.
 - **D2.** Writes go only through RPCs, with no direct DML grants. This is the smallest attack surface.
 - **D3.** The profile has no e-mail. Display name comes from auth metadata.
@@ -229,7 +229,12 @@ No production exists yet.
   clients is revisited with the offboarding flow (docs/15).
 - **D5.** Seed passwords are local/CI-only constants documented as such.
 
-## Architecture decision pending (not blocking this increment)
+## Architecture decision (resolved by ADR 0002)
+
+Resolved on 2026-10-01 by `docs/decisions/0002-contributor-client-access-fail-closed.md`:
+contributors stay fail-closed. There is no `ClientAssignment` and no internal role on
+`ClientMembership`. Effective assignment arrives with Project/Deliverable/Task in v0.2.
+Original analysis below.
 
 **Contributor per-client assignment.** docs/01 says contributors see only "explicitly assigned"
 clients, but docs/02 and docs/10 contain no assignment entity (ClientMembership models client-side
@@ -244,3 +249,25 @@ human decision (ADR):
 
 `no` for everything implemented. The contributor assignment above is surfaced for an ADR and not
 implemented.
+
+## Outcome (2026-10-01)
+
+All acceptance criteria are met. `main` = `b051f33` (PRs #5 TEST_SPEC + #7 Builder + #6 plan).
+
+| Gate | CI on real Supabase (run 36911687604) |
+|---|---|
+| `pnpm verify` | 10/10 |
+| pgTAP | 250/250, including protected acceptance 114/114 |
+| Vitest / pytest / integration | 40/40, 25/25, 6/6 |
+| E2E | 20/20, no skips (authenticated internal and portal flows, PostgREST boundary) |
+
+- **Frozen tests:** `git diff 1893602 b051f33 -- tests/acceptance` is empty.
+- **Mutation proof:** 9/9 injected vulnerabilities were caught by acceptance tests.
+- **Review findings fixed:**
+  - concurrent admin-revocation race (row lock);
+  - invite-only Auth, now proven by E2E. Lesson: `[auth.email] enable_signup` toggles the
+    e-mail provider, not only signup;
+  - small-screen internal shell;
+  - loading states.
+- **Remaining debt (LOW):** CSP, generated DB types, jsx-a11y.
+- **Remaining operational debt:** registry rate limit, admin token for agents.
