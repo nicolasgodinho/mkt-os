@@ -82,6 +82,10 @@ A governed, internal-only Client Brain:
 | Portal visibility of strategy | later increment with its own TEST_SPEC |
 | Automatic `expired` status transition | rule validator / scheduler; effective resolution already ignores rules outside their window |
 | File uploads for sources (`file_id`) | Assets increment; `uri` only now |
+| `sources.valid_from/valid_until`, `insights.evidence_refs` (one `source_id` now), `created_by/updated_by` on audiences/offers/regions (history is in `audit_logs`) | when a consumer needs them (docs/10 fields not required by the Increment 2 contract) |
+| Read-only Brain for archived clients | client offboarding flow (docs/15), same as Increment 1 D4 |
+| Separation of duties (proposer ≠ approver/activator) | product decision; today a holder of both capabilities may do both, and every step is audited |
+| Workspace timezone (dates typed in forms are pinned to midnight `-03:00`) | when workspaces get a timezone setting |
 
 ## Relevant docs
 
@@ -308,6 +312,39 @@ add a new migration dropping the new functions, tables and types. There is no pr
   effective_from, effective_until, source_id`. The TEST_SPEC freezes only `id` and `subject`.
 - **D4.** The channel is a free lowercase key (`^[a-z0-9][a-z0-9_-]{0,39}$`). A Channel entity
   can replace it later without changing the contract.
+- **D5 (review fix, fail-safe).** `effective_rules` resolves hard (MUST/MUST_NOT) and soft
+  (PREFER/AVOID) rules separately, so a preference never shadows an obligation. If the winning
+  level (narrowest scope, then highest priority) of a hard subject holds a rule in `conflict`,
+  the subject has no effective hard rule: nothing falls through to a lower-priority rule, which
+  would be the system choosing a winner (docs/02 §4). Consistent with the frozen README and tests.
+  **Flagged for Nicolas** as an interpretation of "narrower scope wins, then priority".
+- **D6 (review fix).** Supersession always recomputes the superseded rule's subject, so a soft
+  rule superseding one side of a hard conflict releases the other side.
+- **D7.** A rule whose validity already ended cannot be activated (22023). Future rules can.
+- **D8.** Length and cardinality CHECKs in the database mirror the web-form limits.
+
+## Reviews (2026-10-01)
+
+Independent domain, security and UI/a11y reviews of the Builder PR (nicolasgodinho/mkt-os#12).
+Every BLOCKER, HIGH and MEDIUM finding was fixed in `18b265e`, except the ones explicitly deferred
+above:
+- **Domain/security:** the stuck conflict after a soft supersession (D6); soft rules shadowing
+  hard ones and conflicts falling through (D5); filters missing source and validity
+  (docs/07 §12).
+- **UI:**
+  - two E2E blockers: an ambiguous label, and action results lost on revalidation;
+  - React 19 clearing a form after an error;
+  - an arbitrary default source;
+  - repeated accessible names;
+  - unexplained disabled buttons.
+- **LOW:**
+  - copy that overclaimed;
+  - offer end dates labelled exclusive;
+  - a validity badge;
+  - timezone pinning;
+  - DB length limits;
+  - an internal-only gate based on workspace capabilities;
+  - heading levels and `<dl>` validity.
 
 ## Architecture gate required?
 
