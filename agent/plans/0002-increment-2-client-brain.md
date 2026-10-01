@@ -1,7 +1,7 @@
 # ExecPlan 0002 — Increment 2: Client Brain basics
 
-Status: **proposed**. TEST_SPEC is written; the Builder starts only after Nicolas approves this
-plan.
+Status: **approved** by Nicolas on 2026-10-01 ("pode seguir"), including the four product decisions
+and the Builder-level decisions below. The Builder is in progress.
 Spec anchor: `docs/13_MVP_BUILD_PLAN.md` → Increment 2 ("Brand/Audience/Offer/Region;
 Source/Fact/Decision/Rule/Insight; proposed → approved workflow; knowledge UI").
 Contract: protected acceptance tests `tests/acceptance/increment-2/` (TEST_SPEC, commit `6ed762f`, PR #10, branch
