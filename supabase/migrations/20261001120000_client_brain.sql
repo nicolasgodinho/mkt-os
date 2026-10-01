@@ -33,10 +33,12 @@ create type public.rule_status as enum (
 create table public.brand_profiles (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null unique references public.clients (id),
-  business text not null default '',
-  brand text not null default '',
-  voice text not null default '',
-  visual_references text[] not null default '{}',
+  business text not null default '' check (char_length(business) <= 4000),
+  brand text not null default '' check (char_length(brand) <= 4000),
+  voice text not null default '' check (char_length(voice) <= 4000),
+  visual_references text[] not null default '{}'
+    check (cardinality(visual_references) <= 50
+           and char_length(array_to_string(visual_references, '')) <= 50 * 2000),
   updated_by uuid references public.users (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -45,8 +47,8 @@ create table public.brand_profiles (
 create table public.audiences (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
-  name text not null check (btrim(name) <> ''),
-  description text not null default '',
+  name text not null check (btrim(name) <> '' and char_length(name) <= 200),
+  description text not null default '' check (char_length(description) <= 2000),
   status public.context_status not null default 'active',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -56,8 +58,8 @@ create index audiences_client_idx on public.audiences (client_id);
 create table public.offers (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
-  name text not null check (btrim(name) <> ''),
-  description text not null default '',
+  name text not null check (btrim(name) <> '' and char_length(name) <= 200),
+  description text not null default '' check (char_length(description) <= 2000),
   valid_from date,
   valid_until date,
   status public.context_status not null default 'active',
@@ -70,8 +72,8 @@ create index offers_client_idx on public.offers (client_id);
 create table public.regions (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
-  name text not null check (btrim(name) <> ''),
-  description text not null default '',
+  name text not null check (btrim(name) <> '' and char_length(name) <= 200),
+  description text not null default '' check (char_length(description) <= 2000),
   status public.context_status not null default 'active',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -85,9 +87,9 @@ create table public.sources (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
   type public.source_type not null,
-  title text not null check (btrim(title) <> ''),
+  title text not null check (btrim(title) <> '' and char_length(title) <= 300),
   trust_level public.source_trust not null check (trust_level <> 'SYSTEM'),
-  uri text,
+  uri text check (char_length(uri) <= 2000),
   occurred_at timestamptz,
   metadata jsonb not null default '{}',
   created_by uuid not null references public.users (id),
@@ -100,7 +102,7 @@ create table public.facts (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
   source_id uuid not null,
-  statement text not null check (btrim(statement) <> ''),
+  statement text not null check (btrim(statement) <> '' and char_length(statement) <= 2000),
   status public.knowledge_status not null default 'proposed',
   valid_from timestamptz,
   valid_until timestamptz,
@@ -117,8 +119,8 @@ create table public.decisions (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
   source_id uuid not null,
-  statement text not null check (btrim(statement) <> ''),
-  rationale text,
+  statement text not null check (btrim(statement) <> '' and char_length(statement) <= 2000),
+  rationale text check (char_length(rationale) <= 2000),
   decided_at timestamptz not null default now(),
   owner_id uuid not null references public.users (id),
   status public.knowledge_status not null default 'proposed',
@@ -133,7 +135,7 @@ create table public.insights (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
   source_id uuid not null,
-  statement text not null check (btrim(statement) <> ''),
+  statement text not null check (btrim(statement) <> '' and char_length(statement) <= 2000),
   confidence numeric(3, 2) check (confidence between 0 and 1),
   status public.knowledge_status not null default 'proposed',
   proposed_by uuid not null references public.users (id),
@@ -149,15 +151,16 @@ create table public.rules (
   client_id uuid not null references public.clients (id),
   source_id uuid not null,
   type public.rule_type not null,
-  subject text check (subject is null or (subject = lower(btrim(subject)) and subject <> '')),
-  statement text not null check (btrim(statement) <> ''),
+  subject text check (subject is null or (subject = lower(btrim(subject)) and subject <> ''
+                                         and char_length(subject) <= 80)),
+  statement text not null check (btrim(statement) <> '' and char_length(statement) <= 2000),
   scope_type public.rule_scope not null default 'client',
   channel text check (channel is null or channel ~ '^[a-z0-9][a-z0-9_-]{0,39}$'),
   priority integer not null default 50 check (priority between 0 and 100),
   status public.rule_status not null default 'proposed',
   effective_from timestamptz,
   effective_until timestamptz,
-  exception_expression text,
+  exception_expression text check (char_length(exception_expression) <= 2000),
   supersedes_rule_id uuid,
   proposed_by uuid not null references public.users (id),
   approved_by uuid references public.users (id),
@@ -830,6 +833,9 @@ begin
   if app.client_source_trust(v_rule.client_id, v_rule.source_id) = 'UNTRUSTED_EXTERNAL' then
     raise exception 'untrusted sources cannot become rules' using errcode = '22023';
   end if;
+  if v_rule.effective_until is not null and v_rule.effective_until <= now() then
+    raise exception 'rule validity has already ended' using errcode = '22023';
+  end if;
 
   if v_rule.supersedes_rule_id is not null then
     select * into v_old from public.rules r
@@ -854,7 +860,9 @@ begin
   if v_rule.type in ('MUST', 'MUST_NOT') then
     perform app.recompute_rule_conflicts(v_workspace_id, v_rule.client_id, v_rule.subject);
   end if;
-  if v_old.id is not null and v_old.subject is distinct from v_rule.subject then
+  -- The superseded rule may have been one side of a conflict: always release its old subject,
+  -- whatever the type or subject of the superseding rule.
+  if v_old.id is not null then
     perform app.recompute_rule_conflicts(v_workspace_id, v_rule.client_id, v_old.subject);
   end if;
 
@@ -895,8 +903,13 @@ begin
 end;
 $$;
 
--- Effective rules for a client (optionally a channel) at a point in time (docs/02 §4):
--- active and valid at p_at; per subject, the narrower scope wins, then the higher priority.
+-- Effective rules for a client (optionally a channel) at a point in time (docs/02 §4).
+-- Rules valid at p_at and in scope are resolved per subject, with hard (MUST/MUST_NOT) and soft
+-- (PREFER/AVOID) rules resolved separately so a preference never shadows an obligation:
+--   * the narrower scope wins (channel over client), then the higher priority;
+--   * if that winning level of a hard subject holds a rule in `conflict`, the subject has no
+--     effective hard rule at all: nothing falls through to a lower level (no automatic winner);
+--   * rules without a subject never shadow anything.
 create function public.effective_rules(
   p_client_id uuid,
   p_channel text default null,
@@ -920,26 +933,34 @@ security definer
 set search_path = ''
 as $$
   with candidates as (
-    select r.*
+    select r.*, (r.type in ('MUST', 'MUST_NOT')) as hard
       from public.rules r
      where r.client_id = p_client_id
        and app.has_internal_client_access(p_client_id)
-       and r.status = 'active'
+       and r.status in ('active', 'conflict')
        and tstzrange(r.effective_from, r.effective_until, '[)') @> coalesce(p_at, now())
        and (r.scope_type = 'client'
             or (r.scope_type = 'channel' and r.channel = nullif(lower(btrim(p_channel)), '')))
   ),
   ranked as (
     select c.*,
-           rank() over (partition by coalesce(c.subject, c.id::text)
+           rank() over (partition by c.hard, coalesce(c.subject, c.id::text)
                         order by (c.scope_type = 'channel') desc, c.priority desc) as rk
       from candidates c
+  ),
+  winners as (
+    select k.*,
+           bool_or(k.status = 'conflict') over (partition by k.hard, coalesce(k.subject, k.id::text))
+             as blocked
+      from ranked k
+     where k.rk = 1
   )
-  select k.id, k.type, k.subject, k.statement, k.scope_type, k.channel, k.priority,
-         k.effective_from, k.effective_until, k.source_id
-    from ranked k
-   where k.rk = 1
-   order by k.subject nulls last, k.priority desc;
+  select w.id, w.type, w.subject, w.statement, w.scope_type, w.channel, w.priority,
+         w.effective_from, w.effective_until, w.source_id
+    from winners w
+   where w.status = 'active'
+     and not w.blocked
+   order by w.subject nulls last, w.priority desc;
 $$;
 
 create function public.rule_conflicts(p_client_id uuid)

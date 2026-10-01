@@ -43,7 +43,7 @@ export default async function BrainLayout({
       </nav>
       <PageHeader
         title={`Client Brain: ${context.client.name}`}
-        description="Contexto, conhecimento e regras do cliente. Nada entra em vigor sem aprovação."
+        description="Contexto, conhecimento e regras do cliente. Conhecimento e regras só valem depois de aprovados."
       />
       {conflictingSubjects.length > 0 ? (
         <div

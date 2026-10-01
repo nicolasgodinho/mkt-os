@@ -27,6 +27,8 @@ const INVALID_INPUT_MESSAGES = new Map<string, string>(
     'SYSTEM trust is reserved': 'O nível de confiança Sistema é reservado.',
     'source is required': 'Escolha uma fonte.',
     'type and trust level are required': 'Escolha o tipo e a confiança da fonte.',
+    'rule validity has already ended':
+      'A validade desta regra já terminou. Proponha uma nova regra com outra data.',
     'unknown context kind': 'Tipo de item inválido.',
   }),
 );

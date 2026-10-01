@@ -62,7 +62,7 @@ export default async function ClientPage({
             Client Brain
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Marca, públicos, ofertas, regiões, conhecimento aprovado e regras do cliente.
+            Marca, públicos, ofertas, regiões, fontes, conhecimento e regras do cliente.
           </p>
           <Link
             href={`/w/${workspace.slug}/clients/${client.id}/brain`}

@@ -20,6 +20,7 @@ async function proposeRule(
 ): Promise<void> {
   const form = page.getByRole('region', { name: 'Propor regra' });
   await form.getByLabel('Tipo').selectOption(rule.type);
+  await form.getByLabel('Fonte').selectOption(SEEDED.trustedSource);
   await form.getByLabel('Assunto (obrigatório para MUST e MUST NOT)').fill(rule.subject);
   await form.getByLabel('Regra', { exact: true }).fill(rule.statement);
   await form.getByRole('button', { name: 'Propor regra' }).click();
@@ -47,7 +48,7 @@ test.describe('client brain', () => {
     await expect(
       page.getByRole('heading', { level: 1, name: 'Client Brain: Cliente Demo A' }),
     ).toBeVisible();
-    await expect(page.getByLabel('Negócio')).toHaveValue(
+    await expect(page.getByLabel('Negócio', { exact: true })).toHaveValue(
       'Clínica odontológica familiar com três unidades.',
     );
     await expect(page.getByText('Famílias com crianças')).toBeVisible();

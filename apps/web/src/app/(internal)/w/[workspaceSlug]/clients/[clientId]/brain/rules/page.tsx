@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Button, EmptyState, SelectField, StatusBadge, TextAreaField, TextField } from '@jmos/ui';
-import { BrainForm } from '@/components/brain/brain-form';
+import { BrainForm, type BrainFormButton } from '@/components/brain/brain-form';
 import { proposeRule, reviewRule } from '@/lib/brain/actions';
 import { resolveBrainContext } from '@/lib/brain/context';
 import { filterRules, parseRuleFilters } from '@/lib/brain/filters';
@@ -10,8 +10,11 @@ import {
   RULE_TYPE_LABELS,
   RULE_TYPES,
   SOURCE_TRUST,
+  VALIDITY,
+  VALIDITY_STATES,
   canPromoteFrom,
   formatValidity,
+  validityState,
   type Rule,
   type Source,
 } from '@/lib/brain/model';
@@ -25,6 +28,14 @@ function scopeLabel(rule: Pick<Rule, 'scope_type' | 'channel'>): string {
   return rule.scope_type === 'channel' && rule.channel !== null
     ? `Canal: ${rule.channel}`
     : 'Cliente (todos os canais)';
+}
+
+function sourceOption(source: Source) {
+  return { value: source.id, label: `${source.title} (${SOURCE_TRUST[source.trust_level].label})` };
+}
+
+function excerpt(text: string): string {
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
 }
 
 /**
@@ -59,7 +70,13 @@ export default async function RulesPage({
     (rule) => rule.status === 'active' || rule.status === 'conflict',
   );
   const scope = { workspaceSlug: workspace.slug, clientId: client.id };
-  const filtered = filters.type !== null || filters.status !== null || filters.scope !== null;
+  const filtered = [
+    filters.type,
+    filters.status,
+    filters.scope,
+    filters.source,
+    filters.validity,
+  ].some((value) => value !== null);
   const subjects = [...new Set(rules.map((rule) => rule.subject).filter((s) => s !== null))];
 
   return (
@@ -92,11 +109,17 @@ export default async function RulesPage({
                 {can.activateRules ? (
                   <BrainForm
                     action={reviewRule}
-                    hidden={{ ...scope, id: rule.id, decision: 'reject' }}
-                    submitLabel="Rejeitar este lado"
+                    hidden={{ ...scope, id: rule.id }}
                     pendingLabel="Rejeitando…"
-                    submitVariant="secondary"
                     variant="inline"
+                    buttons={[
+                      {
+                        label: 'Rejeitar este lado',
+                        value: 'reject',
+                        ariaLabel: `Rejeitar este lado: ${excerpt(rule.statement)}`,
+                        variant: 'secondary',
+                      },
+                    ]}
                   />
                 ) : null}
               </li>
@@ -137,7 +160,9 @@ export default async function RulesPage({
                 </span>
                 {rule.subject ? <span className="mr-1 font-medium">[{rule.subject}]</span> : null}
                 {rule.statement}
-                <span className="ml-1 text-xs text-muted-foreground">({scopeLabel(rule)})</span>
+                <span className="ml-1 text-xs text-muted-foreground">
+                  ({scopeLabel(rule)}, prioridade {rule.priority.toString()})
+                </span>
               </li>
             ))}
           </ul>
@@ -177,6 +202,20 @@ export default async function RulesPage({
             { value: 'channel', label: 'Canal' },
           ]}
         />
+        <SelectField
+          id="filter-source"
+          name="source"
+          label="Fonte"
+          defaultValue={filters.source ?? ''}
+          options={[{ value: '', label: 'Todas' }, ...sources.map(sourceOption)]}
+        />
+        <SelectField
+          id="filter-validity"
+          name="validity"
+          label="Validade"
+          defaultValue={filters.validity ?? ''}
+          options={[ALL, ...VALIDITY_STATES.map((v) => ({ value: v, label: VALIDITY[v].label }))]}
+        />
         <Button type="submit" variant="secondary">
           Filtrar
         </Button>
@@ -188,6 +227,7 @@ export default async function RulesPage({
         </h2>
         {visible.length === 0 ? (
           <EmptyState
+            headingLevel={3}
             title={filtered ? 'Nada encontrado com esses filtros' : 'Nenhuma regra ainda'}
             description={
               filtered
@@ -202,10 +242,30 @@ export default async function RulesPage({
               const activatable =
                 source === undefined || canPromoteFrom('rule', source.trust_level);
               const validity = formatValidity(rule.effective_from, rule.effective_until);
+              const windowState = validityState(rule.effective_from, rule.effective_until);
               const superseded =
                 rule.supersedes_rule_id === null
                   ? undefined
                   : ruleById.get(rule.supersedes_rule_id);
+              const hintId = `trust-hint-${rule.id}`;
+              const buttons: BrainFormButton[] = [];
+              if (rule.status === 'proposed') {
+                buttons.push({
+                  label: 'Ativar',
+                  value: 'activate',
+                  ariaLabel: `Ativar regra: ${excerpt(rule.statement)}`,
+                  disabled: !activatable,
+                  describedBy: activatable ? undefined : hintId,
+                });
+              }
+              if (rule.status === 'proposed' || rule.status === 'conflict') {
+                buttons.push({
+                  label: 'Rejeitar',
+                  value: 'reject',
+                  ariaLabel: `Rejeitar regra: ${excerpt(rule.statement)}`,
+                  variant: 'secondary',
+                });
+              }
               return (
                 <li
                   key={rule.id}
@@ -220,6 +280,11 @@ export default async function RulesPage({
                     <StatusBadge tone={RULE_STATUS[rule.status].tone}>
                       {RULE_STATUS[rule.status].label}
                     </StatusBadge>
+                    {rule.status === 'active' && windowState !== 'current' ? (
+                      <StatusBadge tone={VALIDITY[windowState].tone}>
+                        {VALIDITY[windowState].label}
+                      </StatusBadge>
+                    ) : null}
                     {rule.subject ? (
                       <span className="text-xs font-medium">Assunto: {rule.subject}</span>
                     ) : null}
@@ -241,29 +306,18 @@ export default async function RulesPage({
                       Substitui: {superseded.statement}
                     </p>
                   ) : null}
-                  {can.activateRules &&
-                  (rule.status === 'proposed' || rule.status === 'conflict') ? (
+                  {can.activateRules ? (
+                    // Stays mounted while the rule changes status, so the result stays visible.
                     <div className="mt-3 flex flex-wrap items-start gap-2">
-                      {rule.status === 'proposed' ? (
-                        <BrainForm
-                          action={reviewRule}
-                          hidden={{ ...scope, id: rule.id, decision: 'activate' }}
-                          submitLabel="Ativar"
-                          pendingLabel="Ativando…"
-                          variant="inline"
-                          disabled={!activatable}
-                        />
-                      ) : null}
                       <BrainForm
                         action={reviewRule}
-                        hidden={{ ...scope, id: rule.id, decision: 'reject' }}
-                        submitLabel="Rejeitar"
-                        pendingLabel="Rejeitando…"
-                        submitVariant="secondary"
+                        hidden={{ ...scope, id: rule.id }}
+                        pendingLabel="Enviando…"
                         variant="inline"
+                        buttons={buttons}
                       />
-                      {!activatable ? (
-                        <p className="text-xs text-muted-foreground">
+                      {rule.status === 'proposed' && !activatable ? (
+                        <p id={hintId} className="text-xs text-muted-foreground">
                           Fonte externa não confiável: esta regra não pode ser ativada.
                         </p>
                       ) : null}
@@ -292,7 +346,7 @@ export default async function RulesPage({
             <BrainForm
               action={proposeRule}
               hidden={scope}
-              submitLabel="Propor regra"
+              buttons={[{ label: 'Propor regra' }]}
               pendingLabel="Enviando…"
               resetOnSuccess
               className="mt-3 max-w-2xl"
@@ -308,10 +362,12 @@ export default async function RulesPage({
                   id="rule-source"
                   name="sourceId"
                   label="Fonte"
-                  options={sources.map((s) => ({
-                    value: s.id,
-                    label: `${s.title} (${SOURCE_TRUST[s.trust_level].label})`,
-                  }))}
+                  required
+                  defaultValue=""
+                  options={[
+                    { value: '', label: 'Selecione a fonte' },
+                    ...sources.map(sourceOption),
+                  ]}
                 />
                 <TextField
                   id="rule-subject"

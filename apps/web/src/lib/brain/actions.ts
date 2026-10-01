@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import { createSupabaseWriter } from '@/lib/supabase/server';
 import type { BrainActionState } from './action-state';
 import { brainErrorMessage, isExpectedBrainError } from './errors';
+import { toBusinessTimestamp } from './model';
 import {
   archiveContextItemForm,
   brandProfileForm,
@@ -158,7 +159,11 @@ export async function proposeKnowledge(
     form.kind === 'fact'
       ? await callRpc(
           'propose_fact',
-          { ...common, p_valid_from: form.validFrom, p_valid_until: form.validUntil },
+          {
+            ...common,
+            p_valid_from: toBusinessTimestamp(form.validFrom),
+            p_valid_until: toBusinessTimestamp(form.validUntil),
+          },
           form,
         )
       : form.kind === 'decision'
@@ -167,7 +172,9 @@ export async function proposeKnowledge(
             {
               ...common,
               p_rationale: form.rationale,
-              ...(form.decidedAt === null ? {} : { p_decided_at: form.decidedAt }),
+              ...(form.decidedAt === null
+                ? {}
+                : { p_decided_at: toBusinessTimestamp(form.decidedAt) }),
             },
             form,
           )
@@ -208,8 +215,8 @@ export async function proposeRule(
       p_statement: form.statement,
       p_channel: form.channel,
       p_priority: form.priority,
-      p_effective_from: form.effectiveFrom,
-      p_effective_until: form.effectiveUntil,
+      p_effective_from: toBusinessTimestamp(form.effectiveFrom),
+      p_effective_until: toBusinessTimestamp(form.effectiveUntil),
       p_supersedes_rule_id: form.supersedesRuleId,
     },
     form,

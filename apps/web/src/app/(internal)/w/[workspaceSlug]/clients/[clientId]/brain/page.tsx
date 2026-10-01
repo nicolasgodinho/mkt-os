@@ -46,7 +46,7 @@ export default async function BrainOverviewPage({
           <BrainForm
             action={saveBrandProfile}
             hidden={scope}
-            submitLabel="Salvar perfil da marca"
+            buttons={[{ label: 'Salvar perfil da marca' }]}
             className="mt-3 max-w-2xl"
           >
             {profileFields.map((field) => (
@@ -81,20 +81,22 @@ export default async function BrainOverviewPage({
                 </dd>
               </div>
             ))}
-            <dt className="font-medium">Referências visuais</dt>
-            <dd className="text-muted-foreground">
-              {visualReferences.length === 0 ? (
-                'Não informado'
-              ) : (
-                <ul>
-                  {visualReferences.map((reference) => (
-                    <li key={reference} className="break-all">
-                      {reference}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </dd>
+            <div className="contents">
+              <dt className="font-medium">Referências visuais</dt>
+              <dd className="text-muted-foreground">
+                {visualReferences.length === 0 ? (
+                  'Não informado'
+                ) : (
+                  <ul>
+                    {visualReferences.map((reference) => (
+                      <li key={reference} className="break-all">
+                        {reference}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </div>
           </dl>
         )}
         {profile !== null ? (

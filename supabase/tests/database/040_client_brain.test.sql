@@ -3,7 +3,7 @@
 -- input normalization, conflict recomputation edge cases, audit action names and idempotence.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(34);
 
 create function pg_temp.login_as(p_user uuid) returns void language plpgsql as $$
 begin
@@ -136,6 +136,62 @@ select is_empty($$ select 1 from public.audit_logs
                   where client_id = 'e1000000-0000-4000-8000-000000000001'
                     and (coalesce(before::text, '') || coalesce(after::text, '')) like '%Use emojis%' $$,
   'rule statements are never copied into the audit trail');
+
+-- ---------------------------------------------------------------------------
+-- Review fixes: supersession by a soft rule, hard/soft resolution, no fall-through, validity
+-- ---------------------------------------------------------------------------
+select pg_temp.login_as('e0000000-0000-4000-8000-000000000001');
+select set_config('b.s1', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'MUST', 'link', 'Inclua link')::text, true);
+select set_config('b.s2', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'MUST_NOT', 'link', 'Sem link')::text, true);
+select public.activate_rule(current_setting('b.s1')::uuid);
+select public.activate_rule(current_setting('b.s2')::uuid);
+select set_config('b.s3', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'PREFER', 'link', 'Prefira link na bio', null, 50, null, null,
+  current_setting('b.s1')::uuid)::text, true);
+select is(public.activate_rule(current_setting('b.s3')::uuid)::text, 'active',
+  'a soft rule may supersede one side of a hard conflict');
+select is((select status::text from public.rules where id = current_setting('b.s2')::uuid), 'active',
+  'superseding by a soft rule releases the other side of the conflict');
+select set_eq($$ select id from public.effective_rules('e1000000-0000-4000-8000-000000000001')
+                 where subject = 'link' $$,
+  $$ select unnest(array[current_setting('b.s2')::uuid, current_setting('b.s3')::uuid]) $$,
+  'a soft rule never shadows a hard rule on the same subject (both are effective)');
+
+select set_config('b.h1', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'MUST_NOT', 'preco', 'Nunca cite preço', null, 40)::text, true);
+select set_config('b.h2', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'MUST', 'preco', 'Cite o preço', null, 80)::text, true);
+select set_config('b.h3', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'MUST_NOT', 'preco', 'Não cite o preço', null, 80)::text, true);
+select public.activate_rule(current_setting('b.h1')::uuid);
+select public.activate_rule(current_setting('b.h2')::uuid);
+select is(public.activate_rule(current_setting('b.h3')::uuid)::text, 'conflict', 'setup: top-level conflict');
+select is_empty($$ select 1 from public.effective_rules('e1000000-0000-4000-8000-000000000001')
+                  where subject = 'preco' $$,
+  'a conflict at the winning level never falls through to a lower-priority rule');
+select set_config('b.h4', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'AVOID', 'preco', 'Evite falar de preço no Instagram',
+  'instagram', 90)::text, true);
+select public.activate_rule(current_setting('b.h4')::uuid);
+select set_eq($$ select id from public.effective_rules('e1000000-0000-4000-8000-000000000001', 'instagram')
+                 where subject = 'preco' $$,
+  $$ select current_setting('b.h4')::uuid $$,
+  'a channel soft rule applies, but does not unblock or replace the conflicting hard rules');
+
+select set_config('b.old', public.propose_rule('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, 'MUST', 'natal', 'Campanha de Natal', null, 50,
+  '2020-12-01', '2020-12-26')::text, true);
+select throws_ok($$ select public.activate_rule(current_setting('b.old')::uuid) $$,
+  '22023', null, 'a rule whose validity already ended cannot be activated');
+select throws_ok($$ select public.propose_fact('e1000000-0000-4000-8000-000000000001',
+  current_setting('b.src1')::uuid, repeat('x', 2001)) $$,
+  '23514', null, 'statement length is bounded in the database, not only in the web form');
+select throws_ok($$ select public.save_brand_profile('e1000000-0000-4000-8000-000000000001',
+  'x', 'x', 'x', array_fill('https://example.test'::text, array[51])) $$,
+  '23514', null, 'visual references are bounded in the database');
+reset role;
 
 -- ---------------------------------------------------------------------------
 -- Privileges of the internal helpers

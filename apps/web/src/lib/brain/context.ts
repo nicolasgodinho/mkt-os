@@ -5,8 +5,8 @@ import { requireSessionUser } from '@/lib/auth/session';
 import type { Capability } from '@/lib/identity/capabilities';
 import {
   getClient,
-  getClientCapabilities,
   getWorkspaceBySlug,
+  getWorkspaceCapabilities,
   type Client,
   type Workspace,
 } from '@/lib/identity/queries';
@@ -29,9 +29,10 @@ function has(capabilities: readonly Capability[], capability: Capability): boole
 }
 
 /**
- * Resolves the workspace and client of a Client Brain route, or renders the shared 404. The
- * capability flags only decide which controls are shown; the database enforces every action.
- * Layouts and pages render in parallel, so each of them calls this (and the session check).
+ * Resolves the workspace and client of a Client Brain route, or renders the shared 404. Access is
+ * internal-only (TEST_SPEC decision 3): it requires workspace-wide `client.view`, never a client
+ * membership. The capability flags only decide which controls are shown; the database enforces
+ * every action. Layouts and pages render in parallel, so each of them calls this.
  */
 export const resolveBrainContext = cache(
   async (workspaceSlug: string, clientId: string, returnTo: string): Promise<BrainContext> => {
@@ -40,8 +41,8 @@ export const resolveBrainContext = cache(
     if (workspace === null) notFound();
     const client = await getClient(clientId);
     if (client?.workspace_id !== workspace.id) notFound();
-    const capabilities = await getClientCapabilities(client.id);
-    // The Client Brain is internal-only (TEST_SPEC decision 3).
+    // Internal capabilities are workspace-wide (docs/01; Increment 1 D1).
+    const capabilities = await getWorkspaceCapabilities(workspace.id);
     if (!has(capabilities, 'client.view')) notFound();
 
     return {

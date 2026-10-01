@@ -42,7 +42,7 @@ function ItemFields({ kind, item }: { kind: ContextKind; item?: ContextItem }) {
         defaultValue={item?.description}
       />
       {kind === 'offer' ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-3">
           <TextField
             id={`${prefix}-from`}
             name="validFrom"
@@ -87,7 +87,12 @@ export function ContextSection({
       ) : (
         <ul className="mt-3 divide-y">
           {active.map((item) => {
-            const validity = formatValidity(item.valid_from ?? null, item.valid_until ?? null);
+            // Offer dates are inclusive calendar dates (unlike rule and fact windows).
+            const validity = formatValidity(
+              item.valid_from ?? null,
+              item.valid_until ?? null,
+              'inclusive',
+            );
             return (
               <li key={item.id} className="py-3 first:pt-0">
                 <p className="text-sm font-medium">{item.name}</p>
@@ -101,12 +106,12 @@ export function ContextSection({
                   <div className="mt-2 flex flex-wrap items-start gap-3">
                     <details className="text-sm">
                       <summary className="cursor-pointer text-xs font-medium text-primary">
-                        Editar
+                        Editar<span className="sr-only"> {item.name}</span>
                       </summary>
                       <BrainForm
                         action={saveContextItem}
                         hidden={{ ...scope, kind, id: item.id }}
-                        submitLabel="Salvar"
+                        buttons={[{ label: 'Salvar' }]}
                         className="mt-3 max-w-xl"
                       >
                         <ItemFields kind={kind} item={item} />
@@ -115,9 +120,14 @@ export function ContextSection({
                     <BrainForm
                       action={archiveContextItem}
                       hidden={{ ...scope, kind, id: item.id }}
-                      submitLabel="Arquivar"
+                      buttons={[
+                        {
+                          label: 'Arquivar',
+                          ariaLabel: `Arquivar ${item.name}`,
+                          variant: 'ghost',
+                        },
+                      ]}
                       pendingLabel="Arquivando…"
-                      submitVariant="ghost"
                       variant="inline"
                     />
                   </div>
@@ -138,7 +148,7 @@ export function ContextSection({
           <BrainForm
             action={saveContextItem}
             hidden={{ ...scope, kind }}
-            submitLabel={addLabel}
+            buttons={[{ label: addLabel }]}
             resetOnSuccess
             className="mt-3 max-w-xl"
           >

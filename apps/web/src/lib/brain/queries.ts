@@ -96,7 +96,9 @@ export const listSources = cache(async (clientId: string): Promise<Source[]> => 
     .from('sources')
     .select('id, type, title, trust_level, uri, created_at')
     .eq('client_id', clientId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .order('title')
+    .order('id');
   if (error !== null) throw new BrainDataError('sources', error.code);
   return z.array(sourceSchema).parse(data);
 });
@@ -111,10 +113,13 @@ export async function listKnowledge(
   sources: readonly Source[],
 ): Promise<KnowledgeItem[]> {
   const supabase = await reader();
+  const narrowed = sources.filter(
+    (source) =>
+      (filters.trust === null || source.trust_level === filters.trust) &&
+      (filters.source === null || source.id === filters.source),
+  );
   const sourceIds =
-    filters.trust === null
-      ? null
-      : sources.filter((source) => source.trust_level === filters.trust).map((s) => s.id);
+    filters.trust === null && filters.source === null ? null : narrowed.map((s) => s.id);
   if (sourceIds !== null && sourceIds.length === 0) return [];
 
   const wants = (kind: KnowledgeItem['kind']) => filters.kind === null || filters.kind === kind;

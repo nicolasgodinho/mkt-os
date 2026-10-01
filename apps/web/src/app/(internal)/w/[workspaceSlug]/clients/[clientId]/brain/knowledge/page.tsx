@@ -3,7 +3,7 @@ import { Button, EmptyState, SelectField, StatusBadge, TextAreaField, TextField 
 import { BrainForm } from '@/components/brain/brain-form';
 import { createSource, proposeKnowledge, reviewKnowledge } from '@/lib/brain/actions';
 import { resolveBrainContext } from '@/lib/brain/context';
-import { parseKnowledgeFilters } from '@/lib/brain/filters';
+import { filterKnowledgeByValidity, parseKnowledgeFilters } from '@/lib/brain/filters';
 import {
   ASSIGNABLE_TRUST_LEVELS,
   KNOWLEDGE_KIND_LABELS,
@@ -14,8 +14,11 @@ import {
   SOURCE_TRUST_LEVELS,
   SOURCE_TYPE_LABELS,
   SOURCE_TYPES,
+  VALIDITY,
+  VALIDITY_STATES,
   canPromoteFrom,
   formatValidity,
+  validityState,
   type Source,
 } from '@/lib/brain/model';
 import { listKnowledge, listSources } from '@/lib/brain/queries';
@@ -23,6 +26,14 @@ import { listKnowledge, listSources } from '@/lib/brain/queries';
 export const metadata: Metadata = { title: 'Conhecimento' };
 
 const ALL = { value: '', label: 'Todos' };
+
+function sourceOption(source: Source) {
+  return { value: source.id, label: `${source.title} (${SOURCE_TRUST[source.trust_level].label})` };
+}
+
+function excerpt(text: string): string {
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+}
 
 /**
  * Knowledge (docs/07 §4 and §12): sources with trust, and facts, decisions and insights. Every
@@ -43,10 +54,13 @@ export default async function KnowledgePage({
   );
   const filters = parseKnowledgeFilters(await searchParams);
   const sources = await listSources(client.id);
-  const items = await listKnowledge(client.id, filters, sources);
+  const items = filterKnowledgeByValidity(
+    await listKnowledge(client.id, filters, sources),
+    filters.validity,
+  );
   const sourceById = new Map<string, Source>(sources.map((source) => [source.id, source]));
   const scope = { workspaceSlug: workspace.slug, clientId: client.id };
-  const filtered = filters.kind !== null || filters.status !== null || filters.trust !== null;
+  const filtered = Object.values(filters).some((value) => value !== null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -76,6 +90,13 @@ export default async function KnowledgePage({
           ]}
         />
         <SelectField
+          id="filter-source"
+          name="source"
+          label="Fonte"
+          defaultValue={filters.source ?? ''}
+          options={[{ value: '', label: 'Todas' }, ...sources.map(sourceOption)]}
+        />
+        <SelectField
           id="filter-trust"
           name="trust"
           label="Confiança da fonte"
@@ -84,6 +105,13 @@ export default async function KnowledgePage({
             ALL,
             ...SOURCE_TRUST_LEVELS.map((t) => ({ value: t, label: SOURCE_TRUST[t].label })),
           ]}
+        />
+        <SelectField
+          id="filter-validity"
+          name="validity"
+          label="Validade"
+          defaultValue={filters.validity ?? ''}
+          options={[ALL, ...VALIDITY_STATES.map((v) => ({ value: v, label: VALIDITY[v].label }))]}
         />
         <Button type="submit" variant="secondary">
           Filtrar
@@ -96,6 +124,7 @@ export default async function KnowledgePage({
         </h2>
         {items.length === 0 ? (
           <EmptyState
+            headingLevel={3}
             title={filtered ? 'Nada encontrado com esses filtros' : 'Nenhum conhecimento ainda'}
             description={
               filtered
@@ -110,7 +139,10 @@ export default async function KnowledgePage({
               const promotable =
                 source === undefined || canPromoteFrom(item.kind, source.trust_level);
               const validity = formatValidity(item.validFrom, item.validUntil);
+              const windowState = validityState(item.validFrom, item.validUntil);
               const proposed = item.status === 'proposed';
+              const kindLabel = KNOWLEDGE_KIND_LABELS[item.kind].toLowerCase();
+              const hintId = `trust-hint-${item.id}`;
               return (
                 <li
                   key={`${item.kind}-${item.id}`}
@@ -125,6 +157,11 @@ export default async function KnowledgePage({
                     <StatusBadge tone={KNOWLEDGE_STATUS[item.status].tone}>
                       {KNOWLEDGE_STATUS[item.status].label}
                     </StatusBadge>
+                    {item.status === 'active' && windowState !== 'current' ? (
+                      <StatusBadge tone={VALIDITY[windowState].tone}>
+                        {VALIDITY[windowState].label}
+                      </StatusBadge>
+                    ) : null}
                   </div>
                   <p className="mt-2 text-sm">{item.statement}</p>
                   {item.detail ? (
@@ -139,28 +176,37 @@ export default async function KnowledgePage({
                     ) : null}
                     {validity ? <span>· Validade: {validity}</span> : null}
                   </p>
-                  {can.approveKnowledge && proposed ? (
+                  {can.approveKnowledge ? (
+                    // Stays mounted while the item changes status, so the result stays visible.
                     <div className="mt-3 flex flex-wrap items-start gap-2">
                       <BrainForm
                         action={reviewKnowledge}
-                        hidden={{ ...scope, kind: item.kind, id: item.id, decision: 'approve' }}
-                        submitLabel="Aprovar"
-                        pendingLabel="Aprovando…"
+                        hidden={{ ...scope, kind: item.kind, id: item.id }}
+                        pendingLabel="Enviando…"
                         variant="inline"
-                        disabled={!promotable}
+                        buttons={
+                          proposed
+                            ? [
+                                {
+                                  label: 'Aprovar',
+                                  value: 'approve',
+                                  ariaLabel: `Aprovar ${kindLabel}: ${excerpt(item.statement)}`,
+                                  disabled: !promotable,
+                                  describedBy: promotable ? undefined : hintId,
+                                },
+                                {
+                                  label: 'Rejeitar',
+                                  value: 'reject',
+                                  ariaLabel: `Rejeitar ${kindLabel}: ${excerpt(item.statement)}`,
+                                  variant: 'secondary',
+                                },
+                              ]
+                            : []
+                        }
                       />
-                      <BrainForm
-                        action={reviewKnowledge}
-                        hidden={{ ...scope, kind: item.kind, id: item.id, decision: 'reject' }}
-                        submitLabel="Rejeitar"
-                        pendingLabel="Rejeitando…"
-                        submitVariant="secondary"
-                        variant="inline"
-                      />
-                      {!promotable ? (
-                        <p className="text-xs text-muted-foreground">
-                          Fonte externa não confiável: não pode virar{' '}
-                          {KNOWLEDGE_KIND_LABELS[item.kind].toLowerCase()}.
+                      {proposed && !promotable ? (
+                        <p id={hintId} className="text-xs text-muted-foreground">
+                          Fonte externa não confiável: não pode virar {kindLabel}.
                         </p>
                       ) : null}
                     </div>
@@ -185,7 +231,7 @@ export default async function KnowledgePage({
             <BrainForm
               action={proposeKnowledge}
               hidden={scope}
-              submitLabel="Propor"
+              buttons={[{ label: 'Propor' }]}
               pendingLabel="Enviando…"
               resetOnSuccess
               className="mt-3 max-w-2xl"
@@ -204,10 +250,12 @@ export default async function KnowledgePage({
                   id="knowledge-source"
                   name="sourceId"
                   label="Fonte"
-                  options={sources.map((s) => ({
-                    value: s.id,
-                    label: `${s.title} (${SOURCE_TRUST[s.trust_level].label})`,
-                  }))}
+                  required
+                  defaultValue=""
+                  options={[
+                    { value: '', label: 'Selecione a fonte' },
+                    ...sources.map(sourceOption),
+                  ]}
                 />
               </div>
               <TextAreaField
@@ -227,7 +275,12 @@ export default async function KnowledgePage({
                   type="date"
                   label="Válido a partir de"
                 />
-                <TextField id="knowledge-until" name="validUntil" type="date" label="Válido até" />
+                <TextField
+                  id="knowledge-until"
+                  name="validUntil"
+                  type="date"
+                  label="Válido até (exclusivo)"
+                />
                 <TextField
                   id="knowledge-rationale"
                   name="rationale"
@@ -271,7 +324,7 @@ export default async function KnowledgePage({
                   {SOURCE_TRUST[source.trust_level].label}
                 </StatusBadge>
                 {source.uri ? (
-                  <span className="break-all text-xs text-muted-foreground">{source.uri}</span>
+                  <span className="text-xs break-all text-muted-foreground">{source.uri}</span>
                 ) : null}
               </li>
             ))}
@@ -285,7 +338,7 @@ export default async function KnowledgePage({
             <BrainForm
               action={createSource}
               hidden={scope}
-              submitLabel="Registrar fonte"
+              buttons={[{ label: 'Registrar fonte' }]}
               resetOnSuccess
               className="mt-3 max-w-2xl"
             >

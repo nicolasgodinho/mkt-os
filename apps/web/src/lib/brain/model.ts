@@ -228,10 +228,52 @@ export function formatDate(value: string | null): string | null {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
 }
 
-export function formatValidity(from: string | null, until: string | null): string | null {
+/**
+ * Describes a validity window. Rules and facts use half-open windows `[from, until)` (TEST_SPEC
+ * README); offers are stored as inclusive dates.
+ */
+export function formatValidity(
+  from: string | null,
+  until: string | null,
+  end: 'exclusive' | 'inclusive' = 'exclusive',
+): string | null {
   const start = formatDate(from);
-  const end = formatDate(until);
-  if (start === null && end === null) return null;
-  if (start !== null && end !== null) return `${start} até ${end} (exclusivo)`;
-  return start !== null ? `a partir de ${start}` : `até ${end ?? ''} (exclusivo)`;
+  const finish = formatDate(until);
+  if (start === null && finish === null) return null;
+  const suffix = end === 'exclusive' ? ' (exclusivo)' : '';
+  if (start !== null && finish !== null) return `${start} até ${finish}${suffix}`;
+  return start !== null ? `a partir de ${start}` : `até ${finish ?? ''}${suffix}`;
+}
+
+export type ValidityState = 'current' | 'expired' | 'future';
+
+/** Where `at` falls in the half-open window `[from, until)`; no bounds = always current. */
+export function validityState(
+  from: string | null,
+  until: string | null,
+  at: Date = new Date(),
+): ValidityState {
+  if (from !== null && at.getTime() < Date.parse(from)) return 'future';
+  if (until !== null && at.getTime() >= Date.parse(until)) return 'expired';
+  return 'current';
+}
+
+export const VALIDITY_STATES = ['current', 'expired', 'future'] as const;
+
+export const VALIDITY: Record<ValidityState, { label: string; tone: StatusTone }> = {
+  current: { label: 'Vigente', tone: 'success' },
+  expired: { label: 'Fora da validade', tone: 'warning' },
+  future: { label: 'Ainda não vigente', tone: 'info' },
+};
+
+/**
+ * UTC offset used to turn a calendar date typed in a form into a timestamp. The agency operates in
+ * America/Sao_Paulo, which has had no daylight saving time since 2019. Replace with a workspace
+ * timezone when one exists.
+ */
+export const BUSINESS_UTC_OFFSET = '-03:00';
+
+/** `2026-10-01` → `2026-10-01T00:00:00-03:00` (midnight in the business timezone). */
+export function toBusinessTimestamp(date: string | null): string | null {
+  return date === null ? null : `${date}T00:00:00${BUSINESS_UTC_OFFSET}`;
 }
