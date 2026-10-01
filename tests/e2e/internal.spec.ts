@@ -1,24 +1,24 @@
 import { expect, test } from '@playwright/test';
 
-test.describe('internal shell (desktop)', () => {
-  test('renders the internal navigation from docs/06 without linking to unbuilt modules', async ({
-    page,
-  }) => {
+// Unauthenticated behavior of the internal surface. Runs everywhere (no Supabase needed).
+test.describe('internal surface without a session', () => {
+  test('protected routes redirect to the login page', async ({ page }) => {
+    await page.goto('/w/jansen/clients');
+    await expect(page).toHaveURL(/\/login\?next=%2Fw%2Fjansen/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Entrar' })).toBeVisible();
+
     await page.goto('/');
+    await expect(page).toHaveURL(/\/login/);
+  });
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Início' })).toBeVisible();
-    const nav = page.getByRole('navigation', { name: 'Navegação principal' });
-    await expect(nav.getByRole('link', { name: 'Início' })).toHaveAttribute('aria-current', 'page');
-
-    // Unbuilt modules are visible as "em breve" but are not links (no fake pages).
-    for (const label of ['Clientes', 'Aprovações', 'Configurações']) {
-      await expect(nav.getByText(label, { exact: true })).toBeVisible();
-      await expect(nav.getByRole('link', { name: label })).toHaveCount(0);
-    }
+  test('the login page shows no internal navigation or data', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toHaveCount(0);
+    await expect(page.getByText('Clientes', { exact: true })).toHaveCount(0);
   });
 
   test('sends baseline security headers', async ({ request }) => {
-    const response = await request.get('/');
+    const response = await request.get('/login');
     expect(response.headers()['x-frame-options']).toBe('DENY');
     expect(response.headers()['x-content-type-options']).toBe('nosniff');
     expect(response.headers()['x-powered-by']).toBeUndefined();

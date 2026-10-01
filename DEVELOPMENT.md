@@ -58,6 +58,36 @@ failure and prints a summary. CI runs the same command.
 - `auto` (default) uses supabase when its database answers on `JMOS_DB_URL`, otherwise pglite,
   and prints a warning banner.
 
+## Authentication and identities (Increment 1)
+
+- The web app uses **Supabase Auth** (e-mail + password) through `@supabase/ssr`. `src/proxy.ts`
+  only refreshes the session. Every page checks the session itself, and all data is read with the
+  user's session, so **Postgres RLS decides what is returned**. The web app never uses a
+  service-role key.
+- Configuration: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. When they
+  are not set, `next.config.ts` asks the local Supabase CLI (`supabase status`) for the local URL
+  and **public** key only. Without a local stack, `/login` says authentication is not configured.
+  Deployed environments must always set the variables.
+- Writes to the Identity context go only through the capability-checked database API
+  (`create_client`, `set_workspace_member`, … — see `tests/acceptance/increment-1/README.md`).
+  Inaccessible targets answer `P0002 not found`, exactly like missing ones.
+- Seeded local identities (password `jmos-local-dev-password`, local/CI only):
+
+  | E-mail | Access |
+  |---|---|
+  | `admin@jansen.local` | Owner/Admin of workspace `jansen` |
+  | `strategist@jansen.local` | strategist (`jansen`) |
+  | `contributor@jansen.local` | contributor: no client until explicitly granted |
+  | `revoked@jansen.local` | revoked internal member |
+  | `client-admin@cliente-a.local`, `approver@cliente-a.local`, `collaborator@cliente-a.local` | Cliente Demo A portal roles |
+  | `revoked@cliente-a.local` | revoked client member |
+  | `viewer@cliente-b.local` | Cliente Demo B viewer |
+  | `admin@outra-agencia.local`, `viewer@cliente-c.local` | second workspace and its client |
+
+- Authenticated E2E specs (`auth.*.spec.ts`, `boundary.internal.spec.ts`) need the real Supabase
+  stack. Locally without Docker they are skipped with a stated reason. In CI
+  (`JMOS_DB_MODE=supabase`), a missing stack fails them.
+
 ## Repository layout
 
 ```text

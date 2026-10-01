@@ -1,0 +1,62 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { PageHeader, StatusBadge } from '@jmos/ui';
+import { CAPABILITY_LABELS } from '@/lib/identity/capabilities';
+import { requireSessionUser } from '@/lib/auth/session';
+import { getClient, getClientCapabilities, getWorkspaceBySlug } from '@/lib/identity/queries';
+
+export const metadata: Metadata = { title: 'Cliente' };
+
+/**
+ * Client context (docs/07 §3, identity/status part). An id the member cannot access — another
+ * client, another workspace or nothing at all — renders the same 404.
+ */
+export default async function ClientPage({
+  params,
+}: {
+  params: Promise<{ workspaceSlug: string; clientId: string }>;
+}) {
+  const { workspaceSlug, clientId } = await params;
+  // Pages render in parallel with layouts, so every page checks the session itself.
+  await requireSessionUser(`/w/${workspaceSlug}/clients/${clientId}`);
+  const workspace = await getWorkspaceBySlug(workspaceSlug);
+  if (workspace === null) notFound();
+  const client = await getClient(clientId);
+  if (client?.workspace_id !== workspace.id) notFound();
+  const capabilities = await getClientCapabilities(client.id);
+
+  return (
+    <>
+      <nav aria-label="Trilha" className="mb-2 text-xs text-muted-foreground">
+        <Link href={`/w/${workspace.slug}/clients`} className="hover:text-foreground">
+          Clientes
+        </Link>
+      </nav>
+      <PageHeader
+        title={client.name}
+        actions={
+          <StatusBadge tone={client.status === 'active' ? 'success' : 'neutral'}>
+            {client.status === 'active' ? 'Ativo' : 'Arquivado'}
+          </StatusBadge>
+        }
+      />
+      <section aria-labelledby="my-access" className="rounded-lg border bg-surface p-4">
+        <h2 id="my-access" className="text-sm font-medium">
+          Seu acesso a este cliente
+        </h2>
+        <ul className="mt-3 flex flex-wrap gap-1.5">
+          {capabilities.map((capability) => (
+            <li key={capability}>
+              <StatusBadge tone="info">{CAPABILITY_LABELS[capability]}</StatusBadge>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Estratégia, conteúdo, aprovações e demais áreas do cliente chegam nos próximos
+          incrementos.
+        </p>
+      </section>
+    </>
+  );
+}
