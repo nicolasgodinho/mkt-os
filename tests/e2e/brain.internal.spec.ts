@@ -120,7 +120,8 @@ test.describe('client brain', () => {
     await login(page, SEED.users.approverA);
     await expectNotFound(page, BRAIN);
     await expectNotFound(page, `${BRAIN}/rules`);
-    await logout(page);
+    // The 404 page has no session controls: start the next identity from a clean session.
+    await page.context().clearCookies();
 
     await login(page, SEED.users.contributor);
     await expectNotFound(page, `${BRAIN}/knowledge`);
