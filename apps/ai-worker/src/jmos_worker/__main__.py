@@ -18,9 +18,10 @@ import psycopg
 from jmos_worker import __version__
 from jmos_worker.config import ConfigError, WorkerConfig
 from jmos_worker.contracts import ContractRegistry
-from jmos_worker.handlers import build_handlers
 from jmos_worker.log import configure_logging
+from jmos_worker.meetings import FasterWhisperTranscriber
 from jmos_worker.models import OllamaAdapter
+from jmos_worker.pipelines import build_handlers
 from jmos_worker.queue import PostgresJobQueue, WorkerRoleError
 from jmos_worker.runner import Worker
 
@@ -42,7 +43,16 @@ def build_worker(config: WorkerConfig) -> tuple[Worker, PostgresJobQueue]:
                 config.ollama_url,
                 config.model_profiles,
                 timeout_seconds=config.model_timeout_seconds,
-            )
+            ),
+            # Transcription is advertised only on machines with a media root.
+            transcriber=(
+                FasterWhisperTranscriber(
+                    config.model_profiles["transcription"], device=config.whisper_device
+                )
+                if config.media_root is not None
+                else None
+            ),
+            media_root=config.media_root,
         ),
         contracts=ContractRegistry.load_packaged(),
         poll_interval_seconds=config.poll_interval_seconds,
