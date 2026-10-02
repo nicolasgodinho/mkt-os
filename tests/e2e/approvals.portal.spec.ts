@@ -1,57 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { apiAs, login, requireSupabase, SEED, type Api } from './support/supabase';
+import { ok, sendToClient, unique } from './support/content';
+import { apiAs, login, requireSupabase, SEED } from './support/supabase';
 
 // Client approval in the portal (Increment 6), on a phone. Every test sends its own fresh content
 // to the client through the database API, so the seed stays reusable on re-runs.
-const A_PAUTA = '32000000-0000-4000-8000-000000000001';
 const PORTAL_A = `/portal/${SEED.clients.a}`;
-
-function unique(label: string): string {
-  return `${label} e2e-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}
-
-/** Calls the API and fails the test on any database error. */
-async function ok(api: Api, fn: string, args: Record<string, unknown>): Promise<unknown> {
-  const result = await api.rpc(fn, args);
-  expect(result.code, `${fn}: ${result.message ?? ''}`).toBeUndefined();
-  return result.data;
-}
-
-/** Content approved internally and sent to Cliente Demo A; returns its ids. */
-async function sendToClient(admin: Api, title: string) {
-  const contentId = (await ok(admin, 'create_content', {
-    p_pauta_id: A_PAUTA,
-    p_channel: 'instagram',
-    p_format: 'post',
-    p_title: title,
-  })) as string;
-  await ok(admin, 'save_content_payload', {
-    p_content_id: contentId,
-    p_payload: {
-      headline: 'Sorriso de família',
-      body: 'Prevenção começa cedo. Traga a família para uma avaliação.',
-      cta: 'Agende pelo WhatsApp',
-    },
-  });
-  const revisionId = (await ok(admin, 'submit_for_internal_review', {
-    p_content_id: contentId,
-  })) as string;
-  const rules = (await ok(admin, 'revision_validation', { p_revision_id: revisionId })) as {
-    rule_id: string;
-  }[];
-  for (const rule of rules) {
-    await ok(admin, 'record_rule_check', {
-      p_revision_id: revisionId,
-      p_rule_id: rule.rule_id,
-      p_result: 'pass',
-    });
-  }
-  await ok(admin, 'complete_internal_review', { p_revision_id: revisionId, p_decision: 'approve' });
-  const requestId = (await ok(admin, 'request_client_approval', {
-    p_revision_id: revisionId,
-  })) as string;
-  return { contentId, requestId };
-}
 
 test.describe('client approval in the portal (mobile)', () => {
   test.beforeEach(() => {

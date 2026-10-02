@@ -185,6 +185,8 @@ export const contentSchema = z.object({
   working_payload: payloadSchema,
   current_revision_id: z.uuid().nullable(),
   approved_revision_id: z.uuid().nullable(),
+  client_approved_revision_id: z.uuid().nullable(),
+  production_due_at: z.string().nullable(),
   updated_at: z.string(),
 });
 export type Content = z.infer<typeof contentSchema>;
