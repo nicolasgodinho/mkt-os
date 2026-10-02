@@ -91,6 +91,22 @@ export default async function ClientPage({
           </Link>
         </section>
       ) : null}
+      {capabilities.includes('client.view') ? (
+        <section aria-labelledby="client-content" className="mt-4 rounded-lg border bg-surface p-4">
+          <h2 id="client-content" className="text-sm font-medium">
+            Conteúdo
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Oportunidades, pautas, conteúdos, revisões e validação de regras.
+          </p>
+          <Link
+            href={`/w/${workspace.slug}/clients/${client.id}/content`}
+            className="mt-3 inline-flex text-sm font-medium text-primary"
+          >
+            Abrir conteúdo
+          </Link>
+        </section>
+      ) : null}
     </>
   );
 }

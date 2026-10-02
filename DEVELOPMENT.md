@@ -130,6 +130,23 @@ failure and prints a summary. CI runs the same command.
   (ADR 0001).
 - **Model runtime.** See `apps/ai-worker/README.md` for the adapter and Ollama setup.
 
+## Content core (Increment 5)
+
+- **Where.** The UI lives at `/w/<workspace>/clients/<client>/content`, with three sections:
+  - Pautas e conteúdos;
+  - Oportunidades;
+  - Iniciativas.
+
+  Each pauta has a detail page that shows its Definition of Ready. Each content item opens in the Content Studio.
+- **Flow.** An opportunity is converted into a pauta. A pauta becomes ready only after it meets the Definition of Ready: objective, audience, message or angle, and CTA. Content can only be created from a ready pauta. Submitting content creates an immutable revision (a trigger refuses UPDATE and DELETE). The internal review then approves that exact revision.
+- **Rule validator.** Before approval, a reviewer checks every effective MUST and MUST_NOT rule for the client and the channel. Approval is blocked if any of these hold:
+  - a rule is not checked;
+  - a MUST_NOT rule is violated;
+  - a relevant rule conflict is open.
+
+  Soft rules never block.
+- **Seed.** Cliente Demo A has an approved post. Cliente Demo B has a post waiting for review that violates its MUST_NOT price rule.
+
 ## Repository layout
 
 ```text
