@@ -246,3 +246,25 @@ def test_transcription_is_only_advertised_with_a_transcriber() -> None:
     assert "meeting.extract.v1" in build_handlers(ScriptedModel())
     assert "meeting.extract.v1" not in build_handlers(None)
     assert "meeting.transcribe.v1" in build_handlers(None, transcriber=FakeTranscriber())
+
+
+def test_review_hardening_of_the_normalizer() -> None:
+    proposals = normalize_proposals(
+        {
+            "proposals": [
+                {"kind": ["fact"], "statement": "kind is not a string"},
+                {"kind": "fact", "statement": "nan", "confidence": float("nan")},
+                {"kind": "rule", "rule_type": "MUST", "statement": "hard rule without subject"},
+                {"kind": "rule", "rule_type": "PREFER", "statement": "soft rule without subject"},
+                {"kind": "rule", "rule_type": "MUST", "subject": "İ" * 80, "statement": "long"},
+            ]
+        }
+    )
+    assert proposals[0] == {"kind": "fact", "statement": "nan"}
+    assert proposals[1] == {
+        "kind": "rule",
+        "statement": "soft rule without subject",
+        "rule_type": "PREFER",
+    }
+    assert len(str(proposals[2]["subject"])) <= 80
+    assert len(proposals) == 3

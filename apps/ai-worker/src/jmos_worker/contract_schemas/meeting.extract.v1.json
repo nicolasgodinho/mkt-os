@@ -82,7 +82,53 @@
                   "type": "string",
                   "enum": [
                     "MUST",
-                    "MUST_NOT",
+                    "MUST_NOT"
+                  ]
+                },
+                "subject": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "\\S"
+                },
+                "statement": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "pattern": "\\S"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "evidence_quote": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "time_ref": {
+                  "type": "string",
+                  "maxLength": 50
+                }
+              },
+              "required": [
+                "kind",
+                "rule_type",
+                "subject",
+                "statement"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "rule"
+                },
+                "rule_type": {
+                  "type": "string",
+                  "enum": [
                     "PREFER",
                     "AVOID"
                   ]

@@ -52,6 +52,9 @@ export default async function MeetingReviewPage({
   const scope = { workspaceSlug: workspace.slug, clientId: client.id, meetingId: meeting.id };
   const brainBase = `/w/${workspace.slug}/clients/${client.id}/brain`;
   const pending = proposals.filter((proposal) => proposal.status === 'proposed').length;
+  const latestJob = jobs[0];
+  const lastJobFailed =
+    latestJob !== undefined && ['failed', 'dead_letter'].includes(latestJob.status);
   const jobButtons: ActionFormButton[] = [];
   if (transcript !== null) {
     jobButtons.push({ label: 'Extrair conhecimento', value: 'extract' });
@@ -86,9 +89,14 @@ export default async function MeetingReviewPage({
               : ''
           }`}
           actions={
-            <StatusBadge tone={MEETING_STATUS[meeting.processing_status].tone}>
-              {MEETING_STATUS[meeting.processing_status].label}
-            </StatusBadge>
+            <>
+              <StatusBadge tone={MEETING_STATUS[meeting.processing_status].tone}>
+                {MEETING_STATUS[meeting.processing_status].label}
+              </StatusBadge>
+              {lastJobFailed ? (
+                <StatusBadge tone="danger">Último processamento falhou</StatusBadge>
+              ) : null}
+            </>
           }
         />
       </div>
@@ -184,6 +192,7 @@ export default async function MeetingReviewPage({
                     return (
                       <li
                         key={proposal.id}
+                        data-proposal-id={proposal.id}
                         className={
                           open
                             ? 'rounded-lg border border-dashed border-status-warning bg-status-warning-surface/40 p-3'
@@ -210,8 +219,12 @@ export default async function MeetingReviewPage({
                         {proposal.evidence_quote ? (
                           <blockquote className="mt-1 border-l-2 pl-2 text-xs text-muted-foreground">
                             “{proposal.evidence_quote}”
-                            {proposal.time_ref ? ` (${proposal.time_ref})` : ''}
                           </blockquote>
+                        ) : null}
+                        {proposal.time_ref ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Momento: {proposal.time_ref}
+                          </p>
                         ) : null}
                         {proposal.status === 'accepted' && section !== null ? (
                           <Link

@@ -21,11 +21,20 @@ const plainProposal = z
   .object({ kind: z.enum(['fact', 'decision', 'insight', 'task']), ...proposalFields })
   .strict();
 
-/** Rules always carry their type; hard rules also need a subject to be accepted later. */
-const ruleProposal = z
+/** Hard rules need a subject to ever be accepted (Increment 2: structural conflict key). */
+const hardRuleProposal = z
   .object({
     kind: z.literal('rule'),
-    rule_type: z.enum(['MUST', 'MUST_NOT', 'PREFER', 'AVOID']),
+    rule_type: z.enum(['MUST', 'MUST_NOT']),
+    subject: nonBlank(80),
+    ...proposalFields,
+  })
+  .strict();
+
+const softRuleProposal = z
+  .object({
+    kind: z.literal('rule'),
+    rule_type: z.enum(['PREFER', 'AVOID']),
     subject: z.string().max(80).optional(),
     ...proposalFields,
   })
@@ -38,7 +47,9 @@ export const meetingExtractV1 = defineJobContract({
     'Structured extraction of proposed facts, decisions, rules, insights and tasks from one transcript revision.',
   input: z.object({ meeting_id: z.uuid(), transcript_revision: z.number().int().min(1) }).strict(),
   output: z
-    .object({ proposals: z.array(z.union([plainProposal, ruleProposal])).max(100) })
+    .object({
+      proposals: z.array(z.union([plainProposal, hardRuleProposal, softRuleProposal])).max(100),
+    })
     .strict(),
 });
 

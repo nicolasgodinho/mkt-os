@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -25,6 +26,8 @@ from jmos_worker.models import Evidence, ModelAdapter, build_messages
 from jmos_worker.queue import JobError, MeetingContext
 
 MAX_PROPOSALS = 100
+# Segment text budget per transcript (characters), below the database's 4 MB JSON limit.
+MAX_SEGMENT_CHARACTERS = 1_000_000
 # Transcripts are split so each request fits comfortably in a local model's context window.
 CHUNK_CHARACTERS = 24_000
 KINDS = frozenset({"fact", "decision", "rule", "insight", "task"})
@@ -76,11 +79,15 @@ def normalize_proposals(raw: object) -> list[dict[str, object]]:
             continue
         kind = item.get("kind")
         statement = _text(item.get("statement"), 2000)
-        if kind not in KINDS or statement is None:
+        if not isinstance(kind, str) or kind not in KINDS or statement is None:
             continue
         proposal: dict[str, object] = {"kind": kind, "statement": statement}
         confidence = item.get("confidence")
-        if isinstance(confidence, int | float) and not isinstance(confidence, bool):
+        if (
+            isinstance(confidence, int | float)
+            and not isinstance(confidence, bool)
+            and math.isfinite(confidence)
+        ):
             proposal["confidence"] = round(min(max(float(confidence), 0.0), 1.0), 2)
         for key, limit in (("evidence_quote", 1000), ("time_ref", 50)):
             value = _text(item.get(key), limit)
@@ -91,9 +98,12 @@ def normalize_proposals(raw: object) -> list[dict[str, object]]:
             if not isinstance(rule_type, str) or rule_type.upper() not in RULE_TYPES:
                 continue  # a rule without a valid type cannot be reviewed as a rule
             proposal["rule_type"] = rule_type.upper()
-            subject = _text(item.get("subject"), 80)
+            raw_subject = item.get("subject")
+            subject = _text(raw_subject.lower(), 80) if isinstance(raw_subject, str) else None
             if subject is not None:
-                proposal["subject"] = subject.lower()
+                proposal["subject"] = subject
+            elif proposal["rule_type"] in ("MUST", "MUST_NOT"):
+                continue  # a hard rule without a subject could never be accepted (Increment 2)
         proposals.append(proposal)
     return proposals
 
@@ -141,13 +151,14 @@ def meeting_extract_v1(adapter: ModelAdapter) -> Handler:
         for index, chunk in enumerate(chunks, start=1):
             if index > 1 and not context.extend_lease():
                 raise JobError("lease_lost", "lease lost between transcript chunks", retryable=True)
+            # The user-entered title is data too: it travels inside the evidence block.
             evidence = Evidence(
                 source_id=f"meeting:{meeting.meeting_id}:revision:{meeting.transcript_revision}",
                 trust_level="FIRST_PARTY",
-                text=chunk,
+                text=f"Meeting title: {meeting.title}\n\n{chunk}",
             )
             task = (
-                f"Meeting: {meeting.title}. Transcript part {index} of {len(chunks)}. "
+                f"Transcript part {index} of {len(chunks)}. "
                 "Extract the proposals from the evidence block."
             )
             reply = adapter.chat_json(
@@ -185,16 +196,18 @@ def resolve_recording(media_root: Path | None, recording_ref: str | None) -> Pat
         raise JobError(
             "media_root_not_configured", "JMOS_MEDIA_ROOT is not configured", retryable=False
         )
-    if not recording_ref or not RECORDING_REF.match(recording_ref) or len(recording_ref) > 500:
+    if not recording_ref or not RECORDING_REF.fullmatch(recording_ref) or len(recording_ref) > 500:
         raise JobError(
             "recording_ref_invalid", "the recording reference is invalid", retryable=False
         )
     root = media_root.resolve(strict=True)
     try:
         path = (root / recording_ref).resolve(strict=True)
-    except (FileNotFoundError, NotADirectoryError):
+    except OSError:  # missing file, permissions, device names: retrying would not help
         raise JobError(
-            "recording_not_found", "the recording is not in the media root", retryable=False
+            "recording_not_found",
+            "the recording is not readable in the media root",
+            retryable=False,
         ) from None
     if not path.is_relative_to(root) or not path.is_file():
         raise JobError(
@@ -257,13 +270,17 @@ def meeting_transcribe_v1(transcriber: Transcriber, media_root: Path | None) -> 
         text = result.text.strip()[:500_000]
         if not text:
             raise JobError("transcript_empty", "the recording produced no speech", retryable=False)
-        output: dict[str, object] = {
-            "text": text,
-            "segments": [
-                {"start_ms": max(start, 0), "end_ms": max(end, 0), "text": segment[:5000]}
-                for start, end, segment in list(result.segments)[:20_000]
-            ],
-        }
+        # Keep the segments well under the database limit (4 MB of JSON) so a valid transcript
+        # is never refused at completion; the full text is always kept.
+        segments: list[dict[str, object]] = []
+        budget = MAX_SEGMENT_CHARACTERS
+        for start, end, segment in list(result.segments)[:20_000]:
+            piece = segment[:5000]
+            budget -= len(piece) + 64
+            if budget < 0:
+                break
+            segments.append({"start_ms": max(start, 0), "end_ms": max(end, 0), "text": piece})
+        output: dict[str, object] = {"text": text, "segments": segments}
         if result.language:
             output["language"] = result.language[:20]
         return output

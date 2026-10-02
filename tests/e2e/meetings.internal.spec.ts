@@ -52,7 +52,14 @@ test.describe('meeting intelligence', () => {
     await login(page, SEED.users.strategist);
     await page.goto(`${MEETINGS}/${SEEDED_MEETING}`);
     const facts = page.getByRole('list', { name: 'Fato' });
-    const fact = facts.getByRole('listitem').first();
+    // Any fact still to review (so a re-run against the same database works), pinned by its id
+    // because the "Para revisar" filter stops matching once it is accepted.
+    const proposalId = await facts
+      .getByRole('listitem')
+      .filter({ hasText: 'Para revisar' })
+      .first()
+      .getAttribute('data-proposal-id');
+    const fact = page.locator(`[data-proposal-id="${proposalId ?? 'missing'}"]`);
     const edited = unique('A clínica abre aos domingos desde novembro.');
 
     await fact.getByText('Editar antes de aceitar').click();

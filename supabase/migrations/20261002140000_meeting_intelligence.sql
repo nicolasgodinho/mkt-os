@@ -131,6 +131,7 @@ begin
     raise exception 'invalid recording reference' using errcode = '22023';
   end if;
   if jsonb_typeof(v_participants) <> 'array' or jsonb_array_length(v_participants) > 50
+     or octet_length(v_participants::text) > 20000
      or exists (
        select 1 from jsonb_array_elements(v_participants) p
         where jsonb_typeof(p) <> 'object'
@@ -155,6 +156,25 @@ begin
 
   perform app.audit(v_workspace_id, p_client_id, 'meeting.created', 'meeting', v_id, null, null);
   return v_id;
+end;
+$$;
+
+-- A meeting job that ended without a result (failed, dead-lettered, canceled) is queued again when
+-- the same unit of work is requested again; attempt numbers are kept (fencing, ADR 0001).
+create function app.requeue_if_finished(p_job_id uuid)
+returns boolean
+language plpgsql
+volatile
+set search_path = ''
+as $$
+begin
+  update public.jobs j
+     set status = 'queued', run_after = now(), finished_at = null,
+         max_attempts = greatest(j.max_attempts, least(j.attempts + 3, 20))
+   where j.id = p_job_id
+     and j.status in ('failed', 'dead_letter', 'canceled')
+     and j.attempts < 20;
+  return found;
 end;
 $$;
 
@@ -232,7 +252,7 @@ begin
     jsonb_build_object('meeting_id', p_meeting_id, 'transcript_revision', v_revision),
     50, 3, 'reasoning', 'meeting.extract/1', null, auth.uid()
   );
-  if not v_existed then
+  if not v_existed or app.requeue_if_finished(v_job_id) then
     update public.meetings set processing_status = 'extracting' where id = p_meeting_id;
     perform app.audit(v_scope.workspace_id, v_meeting.client_id, 'meeting.extraction_requested',
                       'meeting', p_meeting_id, null,
@@ -270,7 +290,7 @@ begin
     jsonb_build_object('meeting_id', p_meeting_id), 50, 3, 'transcription',
     'meeting.transcribe/1', null, auth.uid()
   );
-  if not v_existed then
+  if not v_existed or app.requeue_if_finished(v_job_id) then
     update public.meetings set processing_status = 'transcribing' where id = p_meeting_id;
     perform app.audit(v_scope.workspace_id, v_meeting.client_id,
                       'meeting.transcription_requested', 'meeting', p_meeting_id, null,
@@ -579,7 +599,8 @@ grant select on table public.meetings, public.meeting_transcripts, public.meetin
 
 revoke execute on function
   app.is_recording_ref(text),
-  app.require_meeting(uuid)
+  app.require_meeting(uuid),
+  app.requeue_if_finished(uuid)
 from public, anon, authenticated;
 
 revoke execute on function
