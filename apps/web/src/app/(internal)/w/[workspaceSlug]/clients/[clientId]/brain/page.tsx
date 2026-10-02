@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { TextAreaField } from '@jmos/ui';
-import { BrainForm } from '@/components/brain/brain-form';
+import { ActionForm } from '@/components/action-form';
 import { ContextSection } from '@/components/brain/context-section';
 import { saveBrandProfile } from '@/lib/brain/actions';
 import { resolveBrainContext } from '@/lib/brain/context';
@@ -43,7 +43,7 @@ export default async function BrainOverviewPage({
           Negócio, marca e voz
         </h2>
         {can.editStrategy ? (
-          <BrainForm
+          <ActionForm
             action={saveBrandProfile}
             hidden={scope}
             buttons={[{ label: 'Salvar perfil da marca' }]}
@@ -66,7 +66,7 @@ export default async function BrainOverviewPage({
               maxLength={8000}
               defaultValue={visualReferences.join('\n')}
             />
-          </BrainForm>
+          </ActionForm>
         ) : profile === null ? (
           <p className="mt-3 text-sm text-muted-foreground">
             O perfil da marca ainda não foi preenchido.
