@@ -113,6 +113,21 @@ failure and prints a summary. CI runs the same command.
 - **E2E.** `brain.internal.spec.ts` uses unique subjects and statements per run, so it can run
   repeatedly on the same database.
 
+## Job center (Increment 3)
+
+- **Where.** `/w/<workspace>/automations` (Automações). It shows:
+  - worker health: online when a heartbeat arrived in the last 60 s; the active model profile;
+  - per-status counts, including *stalled* (running with an expired lease);
+  - recent jobs and their last error.
+- **Who.**
+  - Internal staff with `client.view` can read the job center.
+  - Requesting the allow-listed system jobs (`system.healthcheck`, `ai.model_check`), and
+    canceling or retrying jobs, needs `workspace.manage`. All of these go through the database
+    API frozen in `tests/acceptance/increment-3/README.md`.
+- **Retries.** A retry never resets the attempt count: attempt numbers fence stale workers
+  (ADR 0001).
+- **Model runtime.** See `apps/ai-worker/README.md` for the adapter and Ollama setup.
+
 ## Repository layout
 
 ```text

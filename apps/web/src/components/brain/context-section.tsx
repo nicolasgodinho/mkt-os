@@ -1,7 +1,7 @@
 import { StatusBadge, TextAreaField, TextField } from '@jmos/ui';
 import { archiveContextItem, saveContextItem } from '@/lib/brain/actions';
 import { formatValidity, type ContextKind, type Offer } from '@/lib/brain/model';
-import { BrainForm } from './brain-form';
+import { ActionForm } from '@/components/action-form';
 
 interface ContextItem {
   id: string;
@@ -111,16 +111,16 @@ export function ContextSection({
                       >
                         Editar
                       </summary>
-                      <BrainForm
+                      <ActionForm
                         action={saveContextItem}
                         hidden={{ ...scope, kind, id: item.id }}
                         buttons={[{ label: 'Salvar' }]}
                         className="mt-3 max-w-xl"
                       >
                         <ItemFields kind={kind} item={item} />
-                      </BrainForm>
+                      </ActionForm>
                     </details>
-                    <BrainForm
+                    <ActionForm
                       action={archiveContextItem}
                       hidden={{ ...scope, kind, id: item.id }}
                       buttons={[
@@ -148,7 +148,7 @@ export function ContextSection({
       {canEdit ? (
         <details className="mt-4 border-t pt-3">
           <summary className="cursor-pointer text-sm font-medium text-primary">{addLabel}</summary>
-          <BrainForm
+          <ActionForm
             action={saveContextItem}
             hidden={{ ...scope, kind }}
             buttons={[{ label: addLabel }]}
@@ -156,7 +156,7 @@ export function ContextSection({
             className="mt-3 max-w-xl"
           >
             <ItemFields kind={kind} />
-          </BrainForm>
+          </ActionForm>
         </details>
       ) : null}
     </section>

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Button, EmptyState, SelectField, StatusBadge, TextAreaField, TextField } from '@jmos/ui';
-import { BrainForm } from '@/components/brain/brain-form';
+import { ActionForm } from '@/components/action-form';
 import { createSource, proposeKnowledge, reviewKnowledge } from '@/lib/brain/actions';
 import { resolveBrainContext } from '@/lib/brain/context';
 import { filterKnowledgeByValidity, parseKnowledgeFilters } from '@/lib/brain/filters';
@@ -179,7 +179,7 @@ export default async function KnowledgePage({
                   {can.approveKnowledge ? (
                     // Stays mounted while the item changes status, so the result stays visible.
                     <div className="mt-3 flex flex-wrap items-start gap-2">
-                      <BrainForm
+                      <ActionForm
                         action={reviewKnowledge}
                         hidden={{ ...scope, kind: item.kind, id: item.id }}
                         pendingLabel="Enviando…"
@@ -228,7 +228,7 @@ export default async function KnowledgePage({
               Registre uma fonte antes: todo conhecimento precisa de proveniência.
             </p>
           ) : (
-            <BrainForm
+            <ActionForm
               action={proposeKnowledge}
               hidden={scope}
               buttons={[{ label: 'Propor' }]}
@@ -303,7 +303,7 @@ export default async function KnowledgePage({
                   label="Confiança (%)"
                 />
               </fieldset>
-            </BrainForm>
+            </ActionForm>
           )}
         </section>
       ) : null}
@@ -335,7 +335,7 @@ export default async function KnowledgePage({
             <summary className="cursor-pointer text-sm font-medium text-primary">
               Registrar fonte
             </summary>
-            <BrainForm
+            <ActionForm
               action={createSource}
               hidden={scope}
               buttons={[{ label: 'Registrar fonte' }]}
@@ -366,7 +366,7 @@ export default async function KnowledgePage({
                 Fontes são evidência, nunca instruções. Fontes externas não confiáveis só sustentam
                 insights.
               </p>
-            </BrainForm>
+            </ActionForm>
           </details>
         ) : null}
       </section>
