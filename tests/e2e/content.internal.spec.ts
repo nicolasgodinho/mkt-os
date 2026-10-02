@@ -5,7 +5,7 @@ import { apiAs, expectNotFound, login, requireSupabase, SEED } from './support/s
 // The rule-validator flow uses Cliente Demo B, whose rules no other spec changes.
 const CONTENT_A = `/w/${SEED.workspaces.jansen}/clients/${SEED.clients.a}/content`;
 const CONTENT_B = `/w/${SEED.workspaces.jansen}/clients/${SEED.clients.b}/content`;
-const B_REVIEW = '32000000-0000-4000-8000-0000000000b5';
+const B_PAUTA = '32000000-0000-4000-8000-0000000000b4';
 const B_REVISION = '32000000-0000-4000-8000-0000000000b6';
 const B_RULE = '32000000-0000-4000-8000-0000000000b3';
 
@@ -51,8 +51,23 @@ test.describe('content core', () => {
   test('a MUST_NOT violation blocks approval; approval targets the exact revision', async ({
     page,
   }) => {
+    // Fresh content under review for every run (the seed must stay reusable on re-runs).
+    const admin = await apiAs(requireSupabase(), SEED.users.admin);
+    const created = await admin.rpc('create_content', {
+      p_pauta_id: B_PAUTA,
+      p_channel: 'linkedin',
+      p_format: 'post',
+      p_title: unique('Post com preço'),
+    });
+    const contentId = created.data as string;
+    await admin.rpc('save_content_payload', {
+      p_content_id: contentId,
+      p_payload: { body: 'Planos a partir de R$ 29 por colaborador.' },
+    });
+    await admin.rpc('submit_for_internal_review', { p_content_id: contentId });
+
     await login(page, SEED.users.admin);
-    await page.goto(`${CONTENT_B}/items/${B_REVIEW}`);
+    await page.goto(`${CONTENT_B}/items/${contentId}`);
     const review = page.getByRole('region', { name: /Revisão interna/ });
     const rule = review
       .getByRole('list', { name: 'Validação de regras' })
@@ -60,18 +75,22 @@ test.describe('content core', () => {
       .filter({
         hasText: 'Nunca divulgar preços.',
       });
-    const approve = review.getByRole('button', { name: 'Aprovar esta revisão' });
+    const decision = page.getByRole('region', { name: 'Decisão da revisão interna' });
+    const approve = decision.getByRole('button', { name: 'Aprovar esta revisão' });
 
     await rule.getByRole('button', { name: /^Viola:/ }).click();
     await expect(rule.getByText('Checagem registrada.')).toBeVisible();
     await expect(approve).toBeDisabled();
 
     // The text cites a price: the reviewer sends the content back to production.
-    await review.getByRole('button', { name: 'Pedir alterações' }).click();
+    await decision.getByRole('button', { name: 'Pedir alterações' }).click();
+    await expect(decision.getByText(/Alterações solicitadas/)).toBeVisible();
     await expect(page.getByText('Em produção', { exact: true }).first()).toBeVisible();
 
     const editor = page.getByRole('region', { name: 'Texto de trabalho' });
-    await editor.getByLabel('Texto').fill('Planos corporativos sob medida para a sua empresa.');
+    await editor
+      .getByLabel('Texto', { exact: true })
+      .fill('Planos corporativos sob medida para a sua empresa.');
     await editor.getByRole('button', { name: 'Salvar e enviar para revisão' }).click();
     await expect(page.getByRole('heading', { name: /Revisão interna: revisão 2/ })).toBeVisible();
 
@@ -81,8 +100,8 @@ test.describe('content core', () => {
       .filter({ hasText: 'Nunca divulgar preços.' });
     await rule2.getByRole('button', { name: /^Atende:/ }).click();
     await expect(rule2.getByText('Checagem registrada.')).toBeVisible();
-    await page.getByRole('button', { name: 'Aprovar esta revisão' }).click();
-    await expect(page.getByText('Revisão aprovada internamente.')).toBeVisible();
+    await decision.getByRole('button', { name: 'Aprovar esta revisão' }).click();
+    await expect(decision.getByText('Revisão aprovada internamente.')).toBeVisible();
 
     const history = page.getByRole('list', { name: 'Histórico de revisões' });
     await expect(

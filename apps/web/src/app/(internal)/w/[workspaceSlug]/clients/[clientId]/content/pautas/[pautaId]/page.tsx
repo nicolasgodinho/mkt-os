@@ -39,6 +39,10 @@ export default async function PautaPage({
   const scope = { workspaceSlug: workspace.slug, clientId: client.id };
   const base = `/w/${workspace.slug}/clients/${client.id}/content`;
   const evidence = sources.filter((source) => pauta.source_ids.includes(source.id));
+  // Archived items already on the pauta stay selectable so saving never drops them silently.
+  const selectableAudiences = audiences.filter(
+    (audience) => audience.status === 'active' || pauta.audience_ids.includes(audience.id),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,23 +102,22 @@ export default async function PautaPage({
             />
             <fieldset>
               <legend className="mb-1 text-sm font-medium">Público</legend>
-              {audiences.filter((a) => a.status === 'active').length === 0 ? (
+              {selectableAudiences.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Cadastre públicos no Client Brain.</p>
               ) : (
                 <div className="flex flex-wrap gap-3">
-                  {audiences
-                    .filter((audience) => audience.status === 'active')
-                    .map((audience) => (
-                      <label key={audience.id} className="flex items-center gap-1.5 text-sm">
-                        <input
-                          type="checkbox"
-                          name="audienceIds"
-                          value={audience.id}
-                          defaultChecked={pauta.audience_ids.includes(audience.id)}
-                        />
-                        {audience.name}
-                      </label>
-                    ))}
+                  {selectableAudiences.map((audience) => (
+                    <label key={audience.id} className="flex items-center gap-1.5 text-sm">
+                      <input
+                        type="checkbox"
+                        name="audienceIds"
+                        value={audience.id}
+                        defaultChecked={pauta.audience_ids.includes(audience.id)}
+                      />
+                      {audience.name}
+                      {audience.status === 'archived' ? ' (arquivado)' : ''}
+                    </label>
+                  ))}
                 </div>
               )}
             </fieldset>
@@ -156,8 +159,11 @@ export default async function PautaPage({
               options={[
                 { value: '', label: 'Nenhuma' },
                 ...offers
-                  .filter((o) => o.status === 'active')
-                  .map((o) => ({ value: o.id, label: o.name })),
+                  .filter((o) => o.status === 'active' || o.id === pauta.offer_id)
+                  .map((o) => ({
+                    value: o.id,
+                    label: o.status === 'active' ? o.name : `${o.name} (arquivada)`,
+                  })),
               ]}
             />
             <TextAreaField

@@ -40,7 +40,7 @@ export async function listInitiatives(clientId: string): Promise<Initiative[]> {
   const supabase = await reader();
   const { data, error } = await supabase
     .from('initiatives')
-    .select('id, kind, name, status, start_at, end_at')
+    .select('id, kind, name, status, paused_from, start_at, end_at')
     .eq('client_id', clientId)
     .order('created_at', { ascending: false });
   if (error !== null) throw new ContentDataError('initiatives', error.code);

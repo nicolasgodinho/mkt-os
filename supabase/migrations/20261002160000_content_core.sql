@@ -32,6 +32,8 @@ create table public.initiatives (
   kind public.initiative_kind not null,
   name text not null check (btrim(name) <> '' and char_length(name) <= 200),
   status public.initiative_status not null default 'draft',
+  -- The state a paused initiative resumes to (docs/04: pausing never skips steps).
+  paused_from public.initiative_status,
   start_at date,
   end_at date,
   owner_id uuid references public.users (id),
@@ -114,12 +116,20 @@ create table public.content_revisions (
   created_by uuid references public.users (id),
   created_at timestamptz not null default now(),
   unique (content_id, revision_number),
+  unique (id, content_id),
   foreign key (content_id, client_id) references public.contents (id, client_id)
 );
 
+-- A content can only point at its own revisions.
 alter table public.contents
-  add foreign key (current_revision_id) references public.content_revisions (id),
-  add foreign key (approved_revision_id) references public.content_revisions (id);
+  add foreign key (current_revision_id, id) references public.content_revisions (id, content_id),
+  add foreign key (approved_revision_id, id) references public.content_revisions (id, content_id);
+
+create index initiatives_client_idx on public.initiatives (client_id);
+create index opportunities_client_idx on public.opportunities (client_id, status);
+create index pautas_client_idx on public.pautas (client_id, status);
+create index contents_client_idx on public.contents (client_id, status);
+create index contents_pauta_idx on public.contents (pauta_id);
 
 create table public.content_rule_checks (
   revision_id uuid not null references public.content_revisions (id),
@@ -179,7 +189,9 @@ end;
 $$;
 
 -- uuid[] from a jsonb array, every id required to exist in the given client (P0002 otherwise).
-create function app.client_refs(p_value jsonb, p_client_id uuid, p_kind text)
+-- Archived audiences already referenced (p_keep) may stay; new references must be active.
+create function app.client_refs(p_value jsonb, p_client_id uuid, p_kind text,
+                                p_keep uuid[] default '{}')
 returns uuid[]
 language plpgsql
 stable
@@ -203,7 +215,8 @@ begin
   end;
   if p_kind = 'audience' then
     select count(*) into v_found from public.audiences a
-     where a.id = any (v_ids) and a.client_id = p_client_id and a.status = 'active';
+     where a.id = any (v_ids) and a.client_id = p_client_id
+       and (a.status = 'active' or a.id = any (p_keep));
   else
     select count(*) into v_found from public.sources s
      where s.id = any (v_ids) and s.client_id = p_client_id;
@@ -335,12 +348,15 @@ begin
     or (v_initiative.status = 'scheduled' and p_status in ('active', 'paused', 'canceled'))
     or (v_initiative.status = 'active' and p_status in ('completed', 'paused', 'canceled'))
     or (v_initiative.status = 'paused'
-        and p_status in ('planning', 'production', 'scheduled', 'active', 'canceled'))
+        and (p_status = 'canceled' or p_status = v_initiative.paused_from))
   ) then
     raise exception 'invalid initiative transition' using errcode = '22023';
   end if;
 
-  update public.initiatives set status = p_status where id = p_initiative_id;
+  update public.initiatives
+     set status = p_status,
+         paused_from = case when p_status = 'paused' then v_initiative.status end
+   where id = p_initiative_id;
   perform app.audit(v_workspace_id, v_initiative.client_id, 'initiative.status_changed',
                     'initiative', p_initiative_id, jsonb_build_object('status', v_initiative.status),
                     jsonb_build_object('status', p_status));
@@ -500,6 +516,7 @@ declare
   v_pauta public.pautas;
   v_workspace_id uuid;
   v_key text;
+  v_old_offer uuid;
 begin
   perform app.require_uid();
   select * into v_pauta from public.pautas p where p.id = p_pauta_id;
@@ -533,16 +550,25 @@ begin
     v_pauta.constraints := app.optional_text(p_fields -> 'constraints', 4000);
   end if;
   if p_fields ? 'audience_ids' then
-    v_pauta.audience_ids := app.client_refs(p_fields -> 'audience_ids', v_pauta.client_id, 'audience');
+    v_pauta.audience_ids := app.client_refs(p_fields -> 'audience_ids', v_pauta.client_id, 'audience',
+                                            v_pauta.audience_ids);
   end if;
   if p_fields ? 'source_ids' then
     v_pauta.source_ids := app.client_refs(p_fields -> 'source_ids', v_pauta.client_id, 'source');
   end if;
   if p_fields ? 'offer_id' then
+    v_old_offer := v_pauta.offer_id;
+    if jsonb_typeof(p_fields -> 'offer_id') not in ('null', 'string')
+       or (jsonb_typeof(p_fields -> 'offer_id') = 'string'
+           and (p_fields ->> 'offer_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') then
+      raise exception 'invalid field value' using errcode = '22023';
+    end if;
     v_pauta.offer_id := case when jsonb_typeof(p_fields -> 'offer_id') = 'null' then null
                              else (p_fields ->> 'offer_id')::uuid end;
     if v_pauta.offer_id is not null and not exists (
-      select 1 from public.offers o where o.id = v_pauta.offer_id and o.client_id = v_pauta.client_id
+      select 1 from public.offers o
+       where o.id = v_pauta.offer_id and o.client_id = v_pauta.client_id
+         and (o.status = 'active' or o.id = v_old_offer)
     ) then
       raise exception 'not found' using errcode = 'P0002';
     end if;
@@ -768,7 +794,7 @@ begin
     from public.contents c join public.content_revisions r on r.content_id = c.id
    where r.id = p_revision_id
      for update of c;
-  if content.status <> 'internal_review' or content.current_revision_id <> p_revision_id then
+  if content.status <> 'internal_review' or content.current_revision_id is distinct from p_revision_id then
     raise exception 'this revision is not under internal review' using errcode = '22023';
   end if;
 end;
@@ -906,7 +932,7 @@ grant select on table public.initiatives, public.opportunities, public.pautas, p
 revoke execute on function
   app.content_revisions_immutable(),
   app.optional_text(jsonb, integer),
-  app.client_refs(jsonb, uuid, text),
+  app.client_refs(jsonb, uuid, text, uuid[]),
   app.pauta_missing(public.pautas),
   app.revision_rules(uuid),
   app.validate_content_payload(jsonb),

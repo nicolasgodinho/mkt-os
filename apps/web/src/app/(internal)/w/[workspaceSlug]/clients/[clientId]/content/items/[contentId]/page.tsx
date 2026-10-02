@@ -150,7 +150,7 @@ export default async function ContentStudioPage({
                       <TextField
                         id={`note-${row.rule_id}`}
                         name="note"
-                        label="Observação (opcional)"
+                        label={`Observação sobre ${row.subject ?? 'esta regra'} (opcional)`}
                         maxLength={1000}
                       />
                     </ActionForm>
@@ -159,29 +159,43 @@ export default async function ContentStudioPage({
               ))}
             </ul>
           )}
-          {can.review ? (
-            <ActionForm
-              action={completeReview}
-              hidden={{ ...scope, revisionId: current.id }}
-              buttons={[
-                {
-                  label: 'Aprovar esta revisão',
-                  value: 'approve',
-                  disabled: blocking > 0,
-                  describedBy: 'review-hint',
-                },
-                { label: 'Pedir alterações', value: 'changes', variant: 'secondary' },
-              ]}
-              pendingLabel="Enviando…"
-              className="mt-4"
-            >
-              <p id="review-hint" className="text-xs text-muted-foreground">
-                {blocking > 0
+        </section>
+      ) : null}
+
+      {can.review && content.current_revision_id !== null ? (
+        // Always mounted (buttons only while under review) so the decision result stays visible
+        // after the section above disappears.
+        <section aria-labelledby="section-decision" className="rounded-lg border bg-surface p-4">
+          <h3 id="section-decision" className="text-sm font-medium">
+            Decisão da revisão interna
+          </h3>
+          <ActionForm
+            action={completeReview}
+            hidden={{ ...scope, revisionId: content.current_revision_id }}
+            buttons={
+              underReview
+                ? [
+                    {
+                      label: 'Aprovar esta revisão',
+                      value: 'approve',
+                      disabled: blocking > 0,
+                      describedBy: 'review-hint',
+                    },
+                    { label: 'Pedir alterações', value: 'changes', variant: 'secondary' },
+                  ]
+                : []
+            }
+            pendingLabel="Enviando…"
+            className="mt-2"
+          >
+            <p id="review-hint" className="text-xs text-muted-foreground">
+              {!underReview
+                ? 'Nenhuma revisão aguardando decisão.'
+                : blocking > 0
                   ? `${blocking.toString()} regra(s) bloqueando a aprovação.`
                   : 'Nenhuma regra bloqueando. A aprovação vale para esta revisão exata.'}
-              </p>
-            </ActionForm>
-          ) : null}
+            </p>
+          </ActionForm>
         </section>
       ) : null}
 

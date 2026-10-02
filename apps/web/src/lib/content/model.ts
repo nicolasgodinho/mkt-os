@@ -57,14 +57,17 @@ export const INITIATIVE_STATUS: Record<InitiativeStatus, { label: string; tone: 
   canceled: { label: 'Cancelada', tone: 'neutral' },
 };
 
-/** docs/04 Initiative transitions (mirrors the database; the database decides). */
+/**
+ * docs/04 Initiative transitions (mirrors the database; the database decides). A paused
+ * initiative resumes only to the state it was paused in: see `nextInitiativeStatuses`.
+ */
 export const INITIATIVE_NEXT: Record<InitiativeStatus, readonly InitiativeStatus[]> = {
   draft: ['planning', 'canceled'],
   planning: ['production', 'paused', 'canceled'],
   production: ['scheduled', 'paused', 'canceled'],
   scheduled: ['active', 'paused', 'canceled'],
   active: ['completed', 'paused', 'canceled'],
-  paused: ['planning', 'production', 'scheduled', 'active', 'canceled'],
+  paused: ['canceled'],
   completed: [],
   canceled: [],
 };
@@ -122,6 +125,7 @@ export const initiativeSchema = z.object({
   kind: z.enum(INITIATIVE_KINDS),
   name: z.string(),
   status: z.enum(INITIATIVE_STATUSES),
+  paused_from: z.enum(INITIATIVE_STATUSES).nullable(),
   start_at: z.string().nullable(),
   end_at: z.string().nullable(),
 });
@@ -230,4 +234,14 @@ export function buildPayload(fields: {
   const hashtags = parseHashtags(fields.hashtags);
   if (hashtags.length > 0) payload.hashtags = hashtags;
   return payload;
+}
+
+export function nextInitiativeStatuses(initiative: {
+  status: InitiativeStatus;
+  paused_from: InitiativeStatus | null;
+}): InitiativeStatus[] {
+  if (initiative.status === 'paused' && initiative.paused_from !== null) {
+    return [initiative.paused_from, 'canceled'];
+  }
+  return [...INITIATIVE_NEXT[initiative.status]];
 }

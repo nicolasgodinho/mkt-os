@@ -2,7 +2,7 @@
 -- payload validation details, hash determinism, audit action names, helper privileges.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(14);
 
 create function pg_temp.login_as(p_user uuid) returns void language plpgsql as $$
 begin
@@ -49,6 +49,15 @@ select throws_ok($$ select public.submit_for_internal_review(current_setting('b.
   '22023', null, 'content already under review cannot be submitted again');
 select throws_ok($$ select public.complete_internal_review(current_setting('b.r1')::uuid, 'publish') $$,
   '22023', null, 'unknown review decisions are rejected');
+select set_config('b.init', public.create_initiative('e5100000-0000-4000-8000-000000000001', 'launch', 'L')::text, true);
+select public.set_initiative_status(current_setting('b.init')::uuid, 'planning');
+select public.set_initiative_status(current_setting('b.init')::uuid, 'paused');
+select throws_ok($$ select public.set_initiative_status(current_setting('b.init')::uuid, 'active') $$,
+  '22023', null, 'a paused initiative cannot skip ahead when resuming');
+select lives_ok($$ select public.set_initiative_status(current_setting('b.init')::uuid, 'planning') $$,
+  'a paused initiative resumes to the state it was paused in');
+select throws_ok($$ select public.update_pauta(current_setting('b.pauta')::uuid, '{"offer_id": "nope"}'::jsonb) $$,
+  '22023', null, 'a malformed offer id is an invalid argument');
 select set_config('b.opp', public.create_opportunity('e5100000-0000-4000-8000-000000000001', 'trend', 'T', 'R')::text, true);
 select throws_ok($$ select public.create_opportunity('e5100000-0000-4000-8000-000000000001', 'Not A Type', 'T', 'R') $$,
   '22023', null, 'opportunity types are lowercase keys');
@@ -61,7 +70,8 @@ select set_eq(
   $$ select distinct action from public.audit_logs
       where client_id = 'e5100000-0000-4000-8000-000000000001' $$,
   array['audience.saved', 'pauta.created', 'pauta.updated', 'pauta.ready', 'content.created',
-        'content.edited', 'content.submitted', 'opportunity.created'],
+        'content.edited', 'content.submitted', 'opportunity.created', 'initiative.created',
+        'initiative.status_changed'],
   'audit action names for the content core');
 select is_empty($$
   select p.oid::regprocedure::text

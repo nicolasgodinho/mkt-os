@@ -8,8 +8,8 @@ import { createInitiative, setInitiativeStatus } from '@/lib/content/actions';
 import {
   INITIATIVE_KIND_LABELS,
   INITIATIVE_KINDS,
-  INITIATIVE_NEXT,
   INITIATIVE_STATUS,
+  nextInitiativeStatuses,
 } from '@/lib/content/model';
 import { listInitiatives } from '@/lib/content/queries';
 
@@ -59,7 +59,7 @@ export default async function InitiativesPage({
                 <ActionForm
                   action={setInitiativeStatus}
                   hidden={{ ...scope, id: initiative.id }}
-                  buttons={INITIATIVE_NEXT[initiative.status].map((status) => ({
+                  buttons={nextInitiativeStatuses(initiative).map((status) => ({
                     label: INITIATIVE_STATUS[status].label,
                     value: status,
                     variant: 'secondary' as const,

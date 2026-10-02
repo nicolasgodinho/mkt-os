@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INITIATIVE_NEXT, buildPayload, parseHashtags } from './model';
+import { INITIATIVE_NEXT, buildPayload, nextInitiativeStatuses, parseHashtags } from './model';
 
 describe('content studio helpers', () => {
   it('normalizes hashtags', () => {
@@ -18,6 +18,13 @@ describe('content studio helpers', () => {
   it('mirrors the frozen initiative transitions', () => {
     expect(INITIATIVE_NEXT.production).not.toContain('completed');
     expect(INITIATIVE_NEXT.canceled).toEqual([]);
-    expect(INITIATIVE_NEXT.paused).toContain('active');
+    expect(nextInitiativeStatuses({ status: 'paused', paused_from: 'planning' })).toEqual([
+      'planning',
+      'canceled',
+    ]);
+    expect(nextInitiativeStatuses({ status: 'draft', paused_from: null })).toEqual([
+      'planning',
+      'canceled',
+    ]);
   });
 });
