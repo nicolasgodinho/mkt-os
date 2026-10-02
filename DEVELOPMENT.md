@@ -147,6 +147,18 @@ failure and prints a summary. CI runs the same command.
   Soft rules never block.
 - **Seed.** Cliente Demo A has an approved post. Cliente Demo B has a post waiting for review that violates its MUST_NOT price rule.
 
+## Collaboration and client portal (Increment 6)
+
+- **Sending to the client.** In the Content Studio, "Aprovação do cliente" sends the internally approved revision to the client (`approval.request`). A content has at most one open request.
+- **Where.**
+  - Internal staff see every request at `/w/<workspace>/approvals` (Aprovações).
+  - Client approvers see "Precisa de você" on `/portal/<client>`, the list at `/portal/<client>/approvals`, and the approval screen for each request.
+- **Who decides.** Only a client-side member with `approval.decide` approves or asks for changes. Internal grants never count. A decision is immutable and targets the exact revision that was sent.
+- **Stale requests.** If the team edits the content or sends it back to production while the client is reviewing, the open request becomes `canceled`. The client then sees a notice instead of the decision buttons.
+- **Comments.** Each content has an internal thread (staff only) and a client thread. Approvers and collaborators can write in the client thread; viewers only read it. Clients never see internal comments.
+- **Contract.** `tests/acceptance/increment-6/README.md`.
+- **Seed.** Cliente Demo A has a story waiting for the client's approval.
+
 ## Repository layout
 
 ```text
