@@ -30,6 +30,41 @@ const INVALID_INPUT_MESSAGES = new Map<string, string>(
     'rule validity has already ended':
       'A validade desta regra já terminou. Proponha uma nova regra com outra data.',
     'unknown context kind': 'Tipo de item inválido.',
+    // Content core (Increment 5)
+    'an initiative cannot end before it starts':
+      'O fim da iniciativa precisa ser depois do início.',
+    'kind is required': 'Escolha o tipo.',
+    'invalid initiative transition': 'Essa mudança de status não é permitida para a iniciativa.',
+    'invalid opportunity type':
+      'Tipo de oportunidade inválido: use letras minúsculas, números e _.',
+    'unknown review decision': 'Ação inválida.',
+    'this opportunity can no longer be reviewed': 'Esta oportunidade já foi tratada.',
+    'this opportunity cannot be converted': 'Esta oportunidade não pode mais virar pauta.',
+    'a canceled pauta cannot be edited': 'Pautas canceladas não podem ser editadas.',
+    'invalid fields': 'Dados inválidos.',
+    'unknown pauta field': 'Campo de pauta desconhecido.',
+    'invalid field value': 'Valor de campo inválido.',
+    'invalid reference list': 'Referências inválidas.',
+    'only draft pautas can be marked ready':
+      'Só pautas em rascunho podem ser marcadas como prontas.',
+    'the pauta does not meet the Definition of Ready':
+      'A pauta ainda não cumpre o Definition of Ready: objetivo, público, mensagem ou ângulo e CTA.',
+    'invalid content payload': 'Conteúdo inválido.',
+    'unknown payload field': 'Campo de conteúdo desconhecido.',
+    'content can only execute a ready pauta': 'Conteúdos só podem nascer de uma pauta pronta.',
+    'invalid channel or format':
+      'Canal ou formato inválido: use letras minúsculas, números, hífen ou sublinhado.',
+    'this content can no longer be edited': 'Este conteúdo não pode mais ser editado.',
+    'only content in production can be submitted':
+      'Só conteúdos em produção podem ser enviados para revisão.',
+    'content needs a body before review': 'Escreva o texto antes de enviar para revisão.',
+    'this revision is not under internal review':
+      'Esta revisão não está mais em revisão interna. Atualize a página.',
+    'only the hard rules of this revision can be checked':
+      'Só as regras obrigatórias e proibitivas desta revisão podem ser checadas.',
+    'note is too long': 'A observação é longa demais.',
+    'content has blocking rule checks':
+      'Há regras bloqueando a aprovação: confira cada regra e resolva violações e conflitos.',
   }),
 );
 

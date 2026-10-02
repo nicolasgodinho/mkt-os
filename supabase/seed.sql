@@ -167,5 +167,68 @@ insert into public.rules (id, client_id, source_id, type, subject, statement, st
    'Não divulgar preços de tratamentos.', 'proposed',
    '00000000-0000-4000-8000-000000000002', null, null);
 
+-- Content core (Increment 5).
+-- Cliente Demo A: a ready pauta with an approved post (revision 1 approved).
+insert into public.pautas (id, client_id, title, status, objective, audience_ids, message, cta,
+                           offer_id, source_ids, created_by) values
+  ('32000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-00000000000a',
+   'Avaliação gratuita para famílias', 'ready', 'Gerar agendamentos de avaliação',
+   array['30000000-0000-4000-8000-000000000011']::uuid[],
+   'Prevenção começa cedo: traga a família para uma avaliação.', 'Agende pelo WhatsApp',
+   '30000000-0000-4000-8000-000000000021', array['30000000-0000-4000-8000-000000000041']::uuid[],
+   '00000000-0000-4000-8000-000000000002');
+insert into public.contents (id, client_id, pauta_id, channel, format, title, status, owner_id,
+                             working_payload) values
+  ('32000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-00000000000a',
+   '32000000-0000-4000-8000-000000000001', 'instagram', 'post', 'Post: avaliação em família',
+   'approved', '00000000-0000-4000-8000-000000000002',
+   '{"headline": "Sorriso de família", "body": "Prevenção começa cedo. Traga a família para uma avaliação.", "cta": "Agende pelo WhatsApp"}');
+insert into public.content_revisions (id, content_id, client_id, revision_number, payload,
+                                      immutable_hash, created_by)
+select '32000000-0000-4000-8000-000000000021', '32000000-0000-4000-8000-000000000011',
+       '20000000-0000-4000-8000-00000000000a', 1, c.working_payload,
+       encode(sha256(convert_to(c.working_payload::text, 'UTF8')), 'hex'),
+       '00000000-0000-4000-8000-000000000002'
+  from public.contents c where c.id = '32000000-0000-4000-8000-000000000011';
+update public.contents
+   set current_revision_id = '32000000-0000-4000-8000-000000000021',
+       approved_revision_id = '32000000-0000-4000-8000-000000000021'
+ where id = '32000000-0000-4000-8000-000000000011';
+
+-- Cliente Demo B: a hard rule and a post waiting for internal review (rule validator demo/E2E).
+insert into public.sources (id, client_id, type, title, trust_level, created_by) values
+  ('32000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-00000000000b',
+   'meeting', 'Kickoff Cliente B', 'FIRST_PARTY', '00000000-0000-4000-8000-000000000002');
+insert into public.audiences (id, client_id, name, description) values
+  ('32000000-0000-4000-8000-0000000000b2', '20000000-0000-4000-8000-00000000000b',
+   'Empresas parceiras', 'RH de empresas da região');
+insert into public.rules (id, client_id, source_id, type, subject, statement, status, proposed_by,
+                          approved_by, activated_at) values
+  ('32000000-0000-4000-8000-0000000000b3', '20000000-0000-4000-8000-00000000000b',
+   '32000000-0000-4000-8000-0000000000b1', 'MUST_NOT', 'preco', 'Nunca divulgar preços.', 'active',
+   '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001', now());
+insert into public.pautas (id, client_id, title, status, objective, audience_ids, angle, cta,
+                           source_ids, created_by) values
+  ('32000000-0000-4000-8000-0000000000b4', '20000000-0000-4000-8000-00000000000b',
+   'Benefício odontológico para empresas', 'ready', 'Fechar parcerias com empresas',
+   array['32000000-0000-4000-8000-0000000000b2']::uuid[],
+   'Saúde bucal reduz faltas no trabalho', 'Fale com nosso time',
+   array['32000000-0000-4000-8000-0000000000b1']::uuid[], '00000000-0000-4000-8000-000000000002');
+insert into public.contents (id, client_id, pauta_id, channel, format, title, status, owner_id,
+                             working_payload) values
+  ('32000000-0000-4000-8000-0000000000b5', '20000000-0000-4000-8000-00000000000b',
+   '32000000-0000-4000-8000-0000000000b4', 'linkedin', 'post', 'Post: benefício para empresas',
+   'internal_review', '00000000-0000-4000-8000-000000000002',
+   '{"body": "Planos corporativos a partir de R$ 29 por colaborador.", "cta": "Fale com nosso time"}');
+insert into public.content_revisions (id, content_id, client_id, revision_number, payload,
+                                      immutable_hash, created_by)
+select '32000000-0000-4000-8000-0000000000b6', '32000000-0000-4000-8000-0000000000b5',
+       '20000000-0000-4000-8000-00000000000b', 1, c.working_payload,
+       encode(sha256(convert_to(c.working_payload::text, 'UTF8')), 'hex'),
+       '00000000-0000-4000-8000-000000000002'
+  from public.contents c where c.id = '32000000-0000-4000-8000-0000000000b5';
+update public.contents set current_revision_id = '32000000-0000-4000-8000-0000000000b6'
+ where id = '32000000-0000-4000-8000-0000000000b5';
+
 -- Local AI Worker login (see apps/ai-worker/README.md). Production sets its own secret password.
 alter role jmos_worker with login password 'jmos-worker-local-dev-only';
