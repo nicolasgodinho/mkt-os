@@ -41,6 +41,24 @@ class LeasedJob:
         return f"{self.type}.v{self.schema_version}"
 
 
+@dataclass(frozen=True, slots=True)
+class MeetingContext:
+    """Meeting content readable only while the lease of a meeting job is held (ADR 0003)."""
+
+    meeting_id: UUID
+    title: str
+    recording_ref: str | None
+    transcript: str | None
+    transcript_revision: int | None
+
+
+# Jobs whose results are domain rows written in the completion transaction (ADR 0003).
+DOMAIN_COMPLETIONS: Mapping[str, str] = {
+    "meeting.extract.v1": "worker.complete_meeting_extraction",
+    "meeting.transcribe.v1": "worker.complete_meeting_transcription",
+}
+
+
 class CompletionOutcome(StrEnum):
     COMPLETED = "completed"
     DUPLICATE = "duplicate"  # already completed (redelivery); nothing changed
@@ -89,6 +107,8 @@ class JobQueue(Protocol):
     def fail(self, job: LeasedJob, error: JobError) -> FailureOutcome: ...
 
     def extend_lease(self, job: LeasedJob) -> bool: ...
+
+    def meeting_for_job(self, job: LeasedJob) -> MeetingContext | None: ...
 
     def heartbeat(
         self,
@@ -165,11 +185,23 @@ class PostgresJobQueue:
             return cur.fetchone()
 
     def complete(self, job: LeasedJob, result: Mapping[str, object]) -> CompletionOutcome:
+        # Domain jobs complete through their own function, which writes the domain rows in the
+        # same transaction; every other job stores its result with the generic completion.
+        function = DOMAIN_COMPLETIONS.get(job.contract_key, "worker.complete_job")
         value = self._scalar(
-            "select worker.complete_job(%s, %s, %s, %s)",
+            f"select {function}(%s, %s, %s, %s)",
             (job.id, self._worker_id, job.attempt, Jsonb(dict(result))),
         )
         return CompletionOutcome(str(value))
+
+    def meeting_for_job(self, job: LeasedJob) -> MeetingContext | None:
+        with self._connection().cursor(row_factory=class_row(MeetingContext)) as cur:
+            cur.execute(
+                "select meeting_id, title, recording_ref, transcript, transcript_revision"
+                " from worker.meeting_for_job(%s, %s, %s)",
+                (job.id, self._worker_id, job.attempt),
+            )
+            return cur.fetchone()
 
     def fail(self, job: LeasedJob, error: JobError) -> FailureOutcome:
         value = self._scalar(

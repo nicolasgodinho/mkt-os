@@ -3,10 +3,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { brainErrorMessage, isExpectedBrainError } from './errors';
 
-const MIGRATION = path.resolve(
-  import.meta.dirname,
-  '../../../../../supabase/migrations/20261001120000_client_brain.sql',
-);
+const MIGRATIONS = [
+  '20261001120000_client_brain.sql',
+  '20261002140000_meeting_intelligence.sql',
+].map((name) => path.resolve(import.meta.dirname, '../../../../../supabase/migrations', name));
 const GENERIC_INVALID = 'Dados inválidos. Revise os campos e tente novamente.';
 
 describe('brainErrorMessage', () => {
@@ -37,7 +37,7 @@ describe('brainErrorMessage', () => {
   });
 
   it('has a specific message for every literal 22023 error raised by the migration', () => {
-    const sql = readFileSync(MIGRATION, 'utf8');
+    const sql = MIGRATIONS.map((file) => readFileSync(file, 'utf8')).join(' ');
     const pattern = /raise exception '([^'%]+)' using errcode = '22023'/g;
     const messages = [...sql.matchAll(pattern)].map((match) => match[1] ?? '');
     expect(messages.length).toBeGreaterThan(10);

@@ -12,6 +12,7 @@ from jmos_worker.queue import (
     FailureOutcome,
     JobError,
     LeasedJob,
+    MeetingContext,
     WorkerStatus,
 )
 
@@ -69,6 +70,7 @@ class FakeQueue:
         self.on_claim: Callable[[], None] | None = None
         self.on_heartbeat: Callable[[WorkerStatus], None] | None = None
         self.complete_error: Exception | None = None
+        self.meetings: dict[UUID, MeetingContext] = {}
 
     def claim(self, job_types: Sequence[str]) -> LeasedJob | None:
         self.claimed_with.append(list(job_types))
@@ -104,6 +106,9 @@ class FakeQueue:
             self.on_heartbeat(status)
         self.heartbeats.append(status)
         self.model_profiles.append(active_model_profile)
+
+    def meeting_for_job(self, job: LeasedJob) -> MeetingContext | None:
+        return self.meetings.get(job.id)
 
     def close(self) -> None:
         self.closed = True
