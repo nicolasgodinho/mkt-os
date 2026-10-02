@@ -3,7 +3,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { StatusBadge, TextAreaField, TextField } from '@jmos/ui';
 import { ActionForm } from '@/components/action-form';
+import { CommentThread } from '@/components/collab/comment-thread';
+import { requireSessionUser } from '@/lib/auth/session';
 import { resolveBrainContext } from '@/lib/brain/context';
+import { cancelApprovalRequest, requestClientApproval } from '@/lib/collab/actions';
+import { APPROVAL_STATUS } from '@/lib/collab/model';
+import { listComments, listContentApprovals } from '@/lib/collab/queries';
 import { RULE_TYPE_LABELS } from '@/lib/brain/model';
 import { capabilityFlags } from '@/lib/content/access';
 import { completeReview, recordRuleCheck, saveContent } from '@/lib/content/actions';
@@ -51,6 +56,18 @@ export default async function ContentStudioPage({
   const content = await getContent(client.id, contentId);
   if (content === null) notFound();
   const can = await capabilityFlags(workspace.id);
+  const user = await requireSessionUser(
+    `/w/${workspaceSlug}/clients/${clientId}/content/items/${contentId}`,
+  );
+  const [approvals, comments] = await Promise.all([
+    listContentApprovals(content.id),
+    listComments(content.id),
+  ]);
+  const openRequest = approvals.find((request) => request.status === 'requested');
+  const canSendToClient =
+    content.status === 'approved' &&
+    content.approved_revision_id !== null &&
+    openRequest === undefined;
   const [pauta, revisions] = await Promise.all([
     getPauta(client.id, content.pauta_id),
     listRevisions(content.id),
@@ -65,7 +82,9 @@ export default async function ContentStudioPage({
   const blocking = validation.filter((row) => row.blocking).length;
   const scope = { workspaceSlug: workspace.slug, clientId: client.id };
   const base = `/w/${workspace.slug}/clients/${client.id}/content`;
-  const editable = ['ready', 'producing', 'internal_review', 'approved'].includes(content.status);
+  const editable = ['ready', 'producing', 'internal_review', 'client_review', 'approved'].includes(
+    content.status,
+  );
   const payload = content.working_payload;
 
   return (
@@ -213,6 +232,12 @@ export default async function ContentStudioPage({
             ]}
             className="mt-3 max-w-2xl"
           >
+            {content.status === 'client_review' ? (
+              <p className="text-xs text-status-warning">
+                Editar agora cancela o pedido de aprovação do cliente e volta o conteúdo para
+                produção.
+              </p>
+            ) : null}
             {content.status === 'approved' || content.status === 'internal_review' ? (
               <p className="text-xs text-status-warning">
                 Editar agora volta o conteúdo para produção. A revisão{' '}
@@ -263,6 +288,93 @@ export default async function ContentStudioPage({
           </div>
         )}
       </section>
+
+      <section
+        aria-labelledby="section-client-approval"
+        className="rounded-lg border bg-surface p-4"
+      >
+        <h3 id="section-client-approval" className="text-sm font-medium">
+          Aprovação do cliente
+        </h3>
+        {approvals.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">Ainda não enviado ao cliente.</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1 text-sm" aria-label="Pedidos de aprovação">
+            {approvals.map((request) => {
+              const revision = revisions.find((r) => r.id === request.revision_id);
+              return (
+                <li key={request.id} className="flex flex-wrap items-center gap-1.5">
+                  <StatusBadge tone={APPROVAL_STATUS[request.status].tone}>
+                    {APPROVAL_STATUS[request.status].label}
+                  </StatusBadge>
+                  <span className="text-xs text-muted-foreground">
+                    revisão {revision?.revision_number.toString() ?? '?'} · pedido em{' '}
+                    {formatDateTime(request.requested_at)}
+                    {request.due_at ? ` · prazo ${formatDateTime(request.due_at) ?? ''}` : ''}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {can.requestApproval ? (
+          <ActionForm
+            action={openRequest === undefined ? requestClientApproval : cancelApprovalRequest}
+            hidden={{
+              ...scope,
+              contentId: content.id,
+              ...(openRequest === undefined
+                ? { revisionId: content.approved_revision_id ?? '' }
+                : { requestId: openRequest.id }),
+            }}
+            buttons={
+              openRequest !== undefined
+                ? [{ label: 'Cancelar pedido ao cliente', variant: 'secondary' }]
+                : canSendToClient
+                  ? [{ label: 'Enviar para aprovação do cliente' }]
+                  : []
+            }
+            pendingLabel="Enviando…"
+            className="mt-3"
+          >
+            {openRequest === undefined && !canSendToClient ? (
+              <p className="text-xs text-muted-foreground">
+                Só uma revisão aprovada internamente pode ir para o cliente.
+              </p>
+            ) : null}
+            {openRequest === undefined && canSendToClient ? (
+              <TextField
+                id="approval-due"
+                name="dueAt"
+                type="date"
+                label="Prazo para o cliente (opcional)"
+                className="max-w-48"
+              />
+            ) : null}
+          </ActionForm>
+        ) : null}
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <CommentThread
+          title="Conversa com o cliente"
+          description="Visível para o cliente quando o conteúdo for enviado para aprovação."
+          comments={comments.filter((comment) => comment.visibility === 'client')}
+          scope={{ ...scope, contentId: content.id }}
+          visibility="client"
+          canWrite
+          currentUserId={user.id}
+        />
+        <CommentThread
+          title="Comentários internos"
+          description="Nunca visíveis para o cliente."
+          comments={comments.filter((comment) => comment.visibility === 'internal')}
+          scope={{ ...scope, contentId: content.id }}
+          visibility="internal"
+          canWrite
+          currentUserId={user.id}
+        />
+      </div>
 
       <section aria-labelledby="section-revisions">
         <h3 id="section-revisions" className="mb-3 text-sm font-medium">

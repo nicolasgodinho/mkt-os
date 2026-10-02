@@ -33,7 +33,7 @@ export function internalNavigation(workspaceSlug: string): readonly NavItem[] {
     { href: `${base}/calendar`, label: 'Calendário', icon: CalendarDays, available: false },
     { href: `${base}/initiatives`, label: 'Campanhas / Iniciativas', icon: Flag, available: false },
     { href: `${base}/content`, label: 'Conteúdo', icon: FileText, available: false },
-    { href: `${base}/approvals`, label: 'Aprovações', icon: CircleCheck, available: false },
+    { href: `${base}/approvals`, label: 'Aprovações', icon: CircleCheck, available: true },
     { href: `${base}/requests`, label: 'Solicitações', icon: MessageSquarePlus, available: false },
     { href: `${base}/intelligence`, label: 'Inteligência', icon: Lightbulb, available: false },
     { href: `${base}/analytics`, label: 'Analytics', icon: ChartColumn, available: false },

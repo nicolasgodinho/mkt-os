@@ -278,5 +278,28 @@ select '32000000-0000-4000-8000-0000000000b6', '32000000-0000-4000-8000-00000000
 update public.contents set current_revision_id = '32000000-0000-4000-8000-0000000000b6'
  where id = '32000000-0000-4000-8000-0000000000b5';
 
+-- Collaboration (Increment 6): Cliente Demo A has one post waiting for the client's approval.
+insert into public.contents (id, client_id, pauta_id, channel, format, title, status, owner_id,
+                             working_payload) values
+  ('33000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-00000000000a',
+   '32000000-0000-4000-8000-000000000001', 'instagram', 'story', 'Story: avaliação gratuita',
+   'client_review', '00000000-0000-4000-8000-000000000002',
+   '{"headline": "Avaliação gratuita", "body": "Neste mês, a avaliação da família é por nossa conta.", "cta": "Agende pelo WhatsApp"}');
+insert into public.content_revisions (id, content_id, client_id, revision_number, payload,
+                                      immutable_hash, created_by)
+select '33000000-0000-4000-8000-000000000021', '33000000-0000-4000-8000-000000000011',
+       '20000000-0000-4000-8000-00000000000a', 1, c.working_payload,
+       encode(sha256(convert_to(c.working_payload::text, 'UTF8')), 'hex'),
+       '00000000-0000-4000-8000-000000000002'
+  from public.contents c where c.id = '33000000-0000-4000-8000-000000000011';
+update public.contents
+   set current_revision_id = '33000000-0000-4000-8000-000000000021',
+       approved_revision_id = '33000000-0000-4000-8000-000000000021'
+ where id = '33000000-0000-4000-8000-000000000011';
+insert into public.approval_requests (id, client_id, content_id, revision_id, requested_by) values
+  ('33000000-0000-4000-8000-000000000031', '20000000-0000-4000-8000-00000000000a',
+   '33000000-0000-4000-8000-000000000011', '33000000-0000-4000-8000-000000000021',
+   '00000000-0000-4000-8000-000000000002');
+
 -- Local AI Worker login (see apps/ai-worker/README.md). Production sets its own secret password.
 alter role jmos_worker with login password 'jmos-worker-local-dev-only';
