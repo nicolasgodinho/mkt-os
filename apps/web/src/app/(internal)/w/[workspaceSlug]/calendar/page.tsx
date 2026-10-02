@@ -11,6 +11,7 @@ import {
   dayLabel,
   EVENT_TYPE,
   EVENT_TYPES,
+  gridRange,
   groupByDay,
   monthGrid,
   monthLabel,
@@ -80,15 +81,18 @@ export default async function CalendarPage({
   const clientId = clients.find((client) => client.id === first(query.client))?.id ?? null;
   const type: EventType | null = EVENT_TYPES.find((value) => value === first(query.type)) ?? null;
 
-  const range = monthRange(month);
-  const events = (await calendarEvents(range.from, range.to, clientId)).filter(
-    (event) => type === null || event.event_type === type,
+  // Only this workspace's clients: a user may also see clients of other workspaces.
+  const clientIds = new Set(clients.map((client) => client.id));
+  const range = view === 'month' ? gridRange(month) : monthRange(month);
+  const [allEvents, backlog] = await Promise.all([
+    calendarEvents(range.from, range.to, clientId),
+    listSchedulableContents(clientId === null ? [...clientIds] : [clientId]),
+  ]);
+  const events = allEvents.filter(
+    (event) => clientIds.has(event.client_id) && (type === null || event.event_type === type),
   );
   const byDay = groupByDay(events);
   const canSchedule = capabilities.includes('publication.schedule');
-  const backlog = await listSchedulableContents(
-    clientId === null ? clients.map((client) => client.id) : [clientId],
-  );
   const clientName = new Map(clients.map((client) => [client.id, client.name]));
 
   const base = `/w/${workspace.slug}/calendar`;
@@ -198,6 +202,7 @@ export default async function CalendarPage({
                         className={`h-24 border p-1 align-top ${inMonth ? '' : 'bg-surface-muted/50 text-muted-foreground'}`}
                       >
                         <span
+                          aria-current={day === today ? 'date' : undefined}
                           className={`text-xs ${day === today ? 'rounded bg-primary px-1 text-primary-foreground' : ''}`}
                         >
                           {Number(day.slice(8)).toString()}

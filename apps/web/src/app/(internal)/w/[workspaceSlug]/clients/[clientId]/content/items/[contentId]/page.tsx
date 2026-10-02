@@ -67,9 +67,11 @@ export default async function ContentStudioPage({
     listContentPublications(content.id),
   ]);
   const openRequest = approvals.find((request) => request.status === 'requested');
+  // A revision the client already approved is scheduled, not sent again.
   const canSendToClient =
     content.status === 'approved' &&
     content.approved_revision_id !== null &&
+    content.client_approved_revision_id !== content.approved_revision_id &&
     openRequest === undefined;
   const [pauta, revisions] = await Promise.all([
     getPauta(client.id, content.pauta_id),
@@ -342,7 +344,10 @@ export default async function ContentStudioPage({
           >
             {openRequest === undefined && !canSendToClient ? (
               <p className="text-xs text-muted-foreground">
-                Só uma revisão aprovada internamente pode ir para o cliente.
+                {content.approved_revision_id !== null &&
+                content.client_approved_revision_id === content.approved_revision_id
+                  ? 'O cliente já aprovou esta versão.'
+                  : 'Só uma revisão aprovada internamente pode ir para o cliente.'}
               </p>
             ) : null}
             {openRequest === undefined && canSendToClient ? (

@@ -124,7 +124,7 @@ export function upcomingRange(days: number, now: Date = new Date()): { from: str
   };
 }
 
-const MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
+const MONTH = /^(20\d{2}|2100)-(0[1-9]|1[0-2])$/;
 
 /** A valid `YYYY-MM` from the URL, or the current business month. */
 export function parseMonth(raw: string | undefined, now: Date): string {
@@ -142,6 +142,23 @@ export function monthRange(month: string): { from: string; to: string } {
   return {
     from: `${month}-01T00:00:00${BUSINESS_UTC_OFFSET}`,
     to: `${shiftMonth(month, 1)}-01T00:00:00${BUSINESS_UTC_OFFSET}`,
+  };
+}
+
+/** `2026-10-05` → end of that day in the business timezone (deadlines mean "by the end of"). */
+export function toBusinessEndOfDay(date: string | null): string | null {
+  return date === null ? null : `${date}T23:59:00${BUSINESS_UTC_OFFSET}`;
+}
+
+/** The instants that bound the visible grid of a month (its first to its last drawn day). */
+export function gridRange(month: string): { from: string; to: string } {
+  const weeks = monthGrid(month);
+  const last = weeks.at(-1)?.at(-1) ?? `${month}-28`;
+  const [year, index, day] = last.split('-').map(Number) as [number, number, number];
+  const next = new Date(Date.UTC(year, index - 1, day + 1)).toISOString().slice(0, 10);
+  return {
+    from: `${weeks[0]?.[0] ?? `${month}-01`}T00:00:00${BUSINESS_UTC_OFFSET}`,
+    to: `${next}T00:00:00${BUSINESS_UTC_OFFSET}`,
   };
 }
 

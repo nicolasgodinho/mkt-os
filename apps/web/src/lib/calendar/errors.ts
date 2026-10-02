@@ -14,7 +14,7 @@ const KNOWN = new Map<string, string>([
   ['invalid calendar range', 'Período do calendário inválido.'],
   [
     'this content can no longer be edited',
-    'Este conteúdo está agendado: cancele as publicações antes de editar.',
+    'Este conteúdo foi cancelado ou arquivado e não aceita mais prazos.',
   ],
 ]);
 

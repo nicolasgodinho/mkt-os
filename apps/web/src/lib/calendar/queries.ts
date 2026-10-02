@@ -60,8 +60,6 @@ const schedulableSchema = z.object({
   client_id: z.uuid(),
   title: z.string(),
   channel: z.string(),
-  approved_revision_id: z.uuid().nullable(),
-  client_approved_revision_id: z.uuid().nullable(),
 });
 export type SchedulableContent = z.infer<typeof schedulableSchema>;
 
@@ -71,17 +69,7 @@ export async function listSchedulableContents(
 ): Promise<SchedulableContent[]> {
   if (clientIds.length === 0) return [];
   const supabase = await reader();
-  const { data, error } = await supabase
-    .from('contents')
-    .select('id, client_id, title, channel, approved_revision_id, client_approved_revision_id')
-    .in('client_id', [...clientIds])
-    .eq('status', 'approved')
-    .not('client_approved_revision_id', 'is', null)
-    .order('updated_at', { ascending: false })
-    .limit(100);
-  if (error !== null) throw new CalendarDataError('backlog', error.code);
-  return z
-    .array(schedulableSchema)
-    .parse(data)
-    .filter((content) => content.client_approved_revision_id === content.approved_revision_id);
+  const result = await supabase.rpc('unscheduled_contents', { p_client_ids: [...clientIds] });
+  if (result.error !== null) throw new CalendarDataError('backlog', result.error.code);
+  return z.array(schedulableSchema).parse(result.data);
 }

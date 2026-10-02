@@ -6,6 +6,7 @@ import { apiAs, login, requireSupabase, SEED } from './support/supabase';
 // Supabase stack. Each run schedules its own fresh client-approved content.
 const CALENDAR = `/w/${SEED.workspaces.jansen}/calendar`;
 const SEED_POST = 'Post: dicas de escovação';
+const SEED_PUBLICATION = '34000000-0000-4000-8000-000000000041';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BUSINESS_OFFSET_MS = 3 * 60 * 60 * 1000;
 
@@ -56,11 +57,9 @@ test.describe('calendar and publication', () => {
   test('the month view shows typed events; the API boundary holds', async ({ page }) => {
     const config = requireSupabase();
     const admin = await apiAs(config, SEED.users.admin);
-    const seeded = (await admin.select('publications', 'id,scheduled_at')).data as {
-      id: string;
-      scheduled_at: string;
-    }[];
-    const seedPublication = seeded.find((row) => row.id === '34000000-0000-4000-8000-000000000041');
+    const seeded = (await admin.select('publications', `id,scheduled_at&id=eq.${SEED_PUBLICATION}`))
+      .data as { id: string; scheduled_at: string }[];
+    const seedPublication = seeded[0];
     expect(seedPublication).toBeDefined();
     const month = new Date(
       new Date(seedPublication?.scheduled_at ?? '').getTime() - BUSINESS_OFFSET_MS,
@@ -86,9 +85,18 @@ test.describe('calendar and publication', () => {
       p_from: new Date().toISOString(),
       p_to: new Date(Date.now() + 30 * DAY_MS).toISOString(),
     });
+    expect(visible.code).toBeUndefined();
     const types = new Set((visible.data as { event_type: string }[]).map((row) => row.event_type));
     expect(types.has('publication')).toBe(true);
     expect(types.has('production_deadline')).toBe(false);
     expect(types.has('meeting')).toBe(false);
+
+    const otherClient = await apiAs(config, SEED.users.viewerB);
+    const foreign = await otherClient.rpc('calendar_events', {
+      p_from: new Date().toISOString(),
+      p_to: new Date(Date.now() + 30 * DAY_MS).toISOString(),
+      p_client_id: SEED.clients.a,
+    });
+    expect(foreign.code).toBe('P0002');
   });
 });

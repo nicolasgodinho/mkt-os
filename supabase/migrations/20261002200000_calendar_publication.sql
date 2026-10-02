@@ -253,11 +253,23 @@ begin
   end if;
 
   return query
-  with scope as (
-    select c.id, app.has_internal_client_access(c.id) as internal
+  -- Only the caller's own workspaces and client memberships are considered, so the cost follows
+  -- the caller's reach rather than the number of tenants.
+  with candidates as (
+    select c.id
       from public.clients c
      where (p_client_id is null or c.id = p_client_id)
-       and (app.has_internal_client_access(c.id) or app.is_client_member(c.id))
+       and (c.workspace_id in (select w.workspace_id from public.workspace_memberships w
+                                where w.user_id = auth.uid() and w.status = 'active')
+            or c.id in (select m.client_id from public.client_memberships m
+                         where m.user_id = auth.uid() and m.status = 'active'))
+  ),
+  access as (
+    select k.id, app.has_internal_client_access(k.id) as internal from candidates k
+  ),
+  scope as (
+    select a.id, a.internal from access a
+     where a.internal or app.is_client_member(a.id)
   )
   select e.event_type, e.client_id, e.entity_id, e.content_id, e.title, e.starts_at, e.status,
          e.date_field
@@ -296,6 +308,25 @@ begin
 end;
 $$;
 
+-- The unscheduled backlog: content whose latest approved revision the client approved and that has
+-- no publication yet. Runs with the caller's rights (RLS: internal staff only).
+create function public.unscheduled_contents(p_client_ids uuid[])
+returns table (id uuid, client_id uuid, title text, channel text)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select c.id, c.client_id, c.title, c.channel
+    from public.contents c
+   where c.client_id = any (p_client_ids)
+     and c.status = 'approved'
+     and c.client_approved_revision_id is not null
+     and c.client_approved_revision_id = c.approved_revision_id
+   order by c.updated_at desc
+   limit 100;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- RLS and privileges
 -- -----------------------------------------------------------------------------
@@ -316,7 +347,8 @@ revoke execute on function
   public.cancel_publication(uuid),
   public.mark_publication_published(uuid, text),
   public.set_production_deadline(uuid, timestamptz),
-  public.calendar_events(timestamptz, timestamptz, uuid)
+  public.calendar_events(timestamptz, timestamptz, uuid),
+  public.unscheduled_contents(uuid[])
 from public, anon;
 grant execute on function
   public.schedule_publication(uuid, timestamptz, text),
@@ -324,5 +356,6 @@ grant execute on function
   public.cancel_publication(uuid),
   public.mark_publication_published(uuid, text),
   public.set_production_deadline(uuid, timestamptz),
-  public.calendar_events(timestamptz, timestamptz, uuid)
+  public.calendar_events(timestamptz, timestamptz, uuid),
+  public.unscheduled_contents(uuid[])
 to authenticated;

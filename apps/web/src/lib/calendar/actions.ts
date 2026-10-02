@@ -3,11 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import type { ActionState } from '@/lib/action-state';
-import { toBusinessTimestamp } from '@/lib/brain/model';
 import { isSlug } from '@/lib/identity/routing';
 import { createSupabaseWriter } from '@/lib/supabase/server';
 import { calendarErrorMessage } from './errors';
-import { toBusinessDateTime } from './model';
+import { toBusinessDateTime, toBusinessEndOfDay } from './model';
 
 /**
  * Publication and deadline actions. They shape input and call the database API with the user's
@@ -152,7 +151,7 @@ export async function setProductionDeadline(
   const f = parsed.data;
   const failure = await call(
     'set_production_deadline',
-    { p_content_id: f.contentId, p_due_at: toBusinessTimestamp(f.dueAt) },
+    { p_content_id: f.contentId, p_due_at: toBusinessEndOfDay(f.dueAt) },
     pathsFor(f),
   );
   return (

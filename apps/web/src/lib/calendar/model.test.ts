@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   businessDay,
+  gridRange,
   groupByDay,
   monthGrid,
   monthRange,
@@ -67,6 +68,16 @@ describe('months', () => {
     ]);
     expect(weeks.at(-1)?.at(-1)).toBe('2026-11-01');
     expect(weeks.every((week) => week.length === 7)).toBe(true);
+    expect(gridRange('2026-10')).toEqual({
+      from: '2026-09-28T00:00:00-03:00',
+      to: '2026-11-02T00:00:00-03:00',
+    });
+  });
+
+  it('rejects implausible years', () => {
+    const now = new Date('2026-10-02T12:00:00Z');
+    expect(parseMonth('0000-01', now)).toBe('2026-10');
+    expect(parseMonth('0099-05', now)).toBe('2026-10');
   });
 });
 
