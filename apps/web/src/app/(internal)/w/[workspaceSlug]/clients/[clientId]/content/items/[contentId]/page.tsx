@@ -3,9 +3,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { StatusBadge, TextAreaField, TextField } from '@jmos/ui';
 import { ActionForm } from '@/components/action-form';
+import { PublicationPanel } from '@/components/calendar/publication-panel';
 import { CommentThread } from '@/components/collab/comment-thread';
 import { requireSessionUser } from '@/lib/auth/session';
 import { resolveBrainContext } from '@/lib/brain/context';
+import { listContentPublications } from '@/lib/calendar/queries';
 import { cancelApprovalRequest, requestClientApproval } from '@/lib/collab/actions';
 import { APPROVAL_STATUS } from '@/lib/collab/model';
 import { listComments, listContentApprovals } from '@/lib/collab/queries';
@@ -59,9 +61,10 @@ export default async function ContentStudioPage({
   const user = await requireSessionUser(
     `/w/${workspaceSlug}/clients/${clientId}/content/items/${contentId}`,
   );
-  const [approvals, comments] = await Promise.all([
+  const [approvals, comments, publications] = await Promise.all([
     listContentApprovals(content.id),
     listComments(content.id),
+    listContentPublications(content.id),
   ]);
   const openRequest = approvals.find((request) => request.status === 'requested');
   const canSendToClient =
@@ -354,6 +357,13 @@ export default async function ContentStudioPage({
           </ActionForm>
         ) : null}
       </section>
+
+      <PublicationPanel
+        content={content}
+        publications={publications}
+        scope={{ ...scope, contentId: content.id }}
+        can={can}
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <CommentThread
