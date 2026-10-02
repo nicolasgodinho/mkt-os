@@ -112,8 +112,26 @@ class Worker:
         if job.model_profile:
             self._active_model_profile = job.model_profile
         self._heartbeat(WorkerStatus.BUSY, force=True)
-        self._process(job)
+        # Long handlers (model calls) block this thread: keep the liveness row fresh meanwhile so
+        # a busy worker is never shown as offline (docs/15).
+        done = threading.Event()
+        beats = threading.Thread(target=self._beat_while_busy, args=(done,), daemon=True)
+        beats.start()
+        try:
+            self._process(job)
+        finally:
+            done.set()
+            beats.join()
         return True
+
+    def _beat_while_busy(self, done: threading.Event) -> None:
+        while not done.wait(self._heartbeat_interval):
+            try:
+                self._queue.heartbeat(
+                    WorkerStatus.BUSY, self._job_types, self._active_model_profile
+                )
+            except psycopg.Error:  # a missed beat is not fatal; the main loop reports DB failures
+                logger.warning("busy heartbeat failed", extra={"worker_id": self._worker_id})
 
     def _process(self, job: LeasedJob) -> None:
         context: dict[str, object] = {

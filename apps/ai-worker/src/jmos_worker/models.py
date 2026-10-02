@@ -12,6 +12,7 @@ contract before anything is written.
 
 from __future__ import annotations
 
+import http.client
 import json
 import time
 import urllib.error
@@ -71,9 +72,37 @@ def build_messages(
             ],
             ensure_ascii=False,
         )
+        block = escape_for_prompt_block(block)
         content = f"{EVIDENCE_PREAMBLE}\n<untrusted_evidence>\n{block}\n</untrusted_evidence>"
         messages.append({"role": "user", "content": content})
     return messages
+
+
+class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    """A loopback runtime has no reason to redirect; following one could leave the machine."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        del req, fp, code, msg, headers, newurl
+
+
+def _loopback_opener() -> urllib.request.OpenerDirector:
+    # No proxies (HTTP(S)_PROXY or the OS settings would route prompts and evidence off the
+    # machine) and no redirects: requests only ever reach the configured loopback URL.
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _RefuseRedirects())
+
+
+def escape_for_prompt_block(text: str) -> str:
+    """Neutralises markup in serialized evidence so it cannot close or open prompt blocks."""
+    # JSON allows \uXXXX escapes inside strings, so the block stays valid JSON.
+    return text.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
 
 
 class OllamaAdapter:
@@ -89,6 +118,7 @@ class OllamaAdapter:
         self._url = base_url.rstrip("/") + "/api/chat"
         self._profiles = dict(profiles)
         self._timeout = timeout_seconds
+        self._opener = _loopback_opener()
 
     def model_for(self, profile: str) -> str:
         model = self._profiles.get(profile)
@@ -114,7 +144,7 @@ class OllamaAdapter:
         )
         started = time.monotonic()
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:  # noqa: S310
+            with self._opener.open(request, timeout=self._timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as error:
             if error.code == 404:
@@ -126,7 +156,13 @@ class OllamaAdapter:
             raise JobError(
                 "model_unavailable", f"model runtime answered HTTP {error.code}", retryable=True
             ) from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+        except (
+            urllib.error.URLError,
+            http.client.HTTPException,
+            TimeoutError,
+            ConnectionError,
+            OSError,
+        ):
             raise JobError(
                 "model_unavailable", "the local model runtime is not reachable", retryable=True
             ) from None

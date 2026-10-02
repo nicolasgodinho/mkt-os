@@ -58,11 +58,14 @@ export async function listRecentJobs(
   return z.array(jobSchema).parse(data);
 }
 
+/** Workers seen in the last 24 h; older rows are past processes (worker ids change per run). */
 export async function listWorkers(): Promise<WorkerHeartbeat[]> {
   const supabase = await reader();
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('worker_heartbeats')
     .select('worker_id, status, version, job_types, active_model_profile, last_seen_at')
+    .gte('last_seen_at', since)
     .order('last_seen_at', { ascending: false });
   if (error !== null) throw new JobDataError('workers', error.code);
   return z.array(workerSchema).parse(data);

@@ -54,7 +54,8 @@ class WorkerConfig:
             raise ConfigError(f"JMOS_WORKER_LOG_LEVEL must be one of {sorted(LOG_LEVELS)}")
 
         lease_seconds = _int(env, "JMOS_WORKER_LEASE_SECONDS", 300, low=10, high=3600)
-        heartbeat = _float(env, "JMOS_WORKER_HEARTBEAT_SECONDS", 15.0, low=1.0, high=300.0)
+        # The job center shows a worker as offline after 60 s without a heartbeat.
+        heartbeat = _float(env, "JMOS_WORKER_HEARTBEAT_SECONDS", 15.0, low=1.0, high=30.0)
         if heartbeat >= lease_seconds:
             raise ConfigError(
                 "JMOS_WORKER_HEARTBEAT_SECONDS must be shorter than JMOS_WORKER_LEASE_SECONDS"
@@ -62,7 +63,12 @@ class WorkerConfig:
 
         ollama_url = env.get("JMOS_OLLAMA_URL", "").strip() or DEFAULT_OLLAMA_URL
         parts = urlsplit(ollama_url)
-        if parts.scheme not in ("http", "https") or parts.hostname not in LOOPBACK_HOSTS:
+        if (
+            parts.scheme not in ("http", "https")
+            or parts.hostname not in LOOPBACK_HOSTS
+            or parts.username is not None
+            or parts.password is not None
+        ):
             raise ConfigError(
                 "JMOS_OLLAMA_URL must be an http(s) URL on a loopback address "
                 "(localhost, 127.0.0.1 or ::1)"

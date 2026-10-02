@@ -58,7 +58,7 @@ export default async function AutomationsPage({
   const counts = summary
     ? [
         { label: 'Na fila', value: summary.queued },
-        { label: 'Executando', value: summary.running },
+        { label: 'Executando (inclui travados)', value: summary.running },
         { label: 'Travados', value: summary.stalled },
         { label: 'Aguardando nova tentativa', value: summary.retry_wait },
         { label: 'Concluídos', value: summary.completed },
@@ -197,7 +197,7 @@ export default async function AutomationsPage({
             {jobs.map((job) => {
               const stalled = isStalled(job);
               const buttons: ActionFormButton[] = [];
-              const label = `${contractKey(job)} de ${formatDateTime(job.created_at) ?? ''}`;
+              const label = `${contractKey(job)} de ${formatDateTime(job.created_at) ?? ''} (${job.id.slice(0, 8)})`;
               if (CANCELABLE.includes(job.status)) {
                 buttons.push({
                   label: 'Cancelar',
@@ -230,7 +230,7 @@ export default async function AutomationsPage({
                   </p>
                   {job.last_error ? (
                     <p className="mt-1 text-xs text-status-danger">
-                      Erro: {job.last_error.code ?? 'desconhecido'}
+                      Último erro: {job.last_error.code ?? 'desconhecido'}
                       {job.last_error.message ? `: ${job.last_error.message}` : ''}
                     </p>
                   ) : null}

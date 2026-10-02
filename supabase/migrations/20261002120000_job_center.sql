@@ -98,12 +98,15 @@ begin
     raise exception 'idempotency key is required' using errcode = '22023';
   end if;
 
+  -- Serialize concurrent requests for the same key so the creation is audited exactly once.
+  perform pg_advisory_xact_lock(hashtextextended(p_workspace_id::text || ':' || v_key, 0));
   select exists (
     select 1 from public.jobs j where j.workspace_id = p_workspace_id and j.idempotency_key = v_key
   ) into v_existed;
 
   v_job_id := app.enqueue_job(
-    p_workspace_id, null, p_type, 1, v_key, '{}'::jsonb, 50, 3, v_model_profile,
+    -- Low priority: diagnostics never hold up client-facing work on the single GPU (docs/08 §4).
+    p_workspace_id, null, p_type, 1, v_key, '{}'::jsonb, 10, 3, v_model_profile,
     v_pipeline_version, null, v_uid
   );
 

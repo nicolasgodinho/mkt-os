@@ -49,7 +49,7 @@ stack. In staging and production, an operator sets the role's password through s
 | `JMOS_WORKER_ID` | `<hostname>-<pid>` | Lease owner / heartbeat id |
 | `JMOS_WORKER_POLL_SECONDS` | `2` | Idle poll interval |
 | `JMOS_WORKER_LEASE_SECONDS` | `300` | Lease length per attempt |
-| `JMOS_WORKER_HEARTBEAT_SECONDS` | `15` | Liveness update interval (must be < lease) |
+| `JMOS_WORKER_HEARTBEAT_SECONDS` | `15` | Liveness update interval, at most 30 s and shorter than the lease (the job center shows a worker as offline after 60 s of silence; a busy worker keeps beating while a job runs) |
 | `JMOS_WORKER_LOG_LEVEL` | `INFO` | JSON-lines log level |
 | `JMOS_OLLAMA_URL` | `http://127.0.0.1:11434` | Local model runtime. **Loopback addresses only**: never expose Ollama to the network |
 | `JMOS_MODEL_REASONING` | `gpt-oss:20b` | Model behind the `reasoning` task profile (docs/08 §3) |
