@@ -88,6 +88,31 @@ failure and prints a summary. CI runs the same command.
   stack. Locally without Docker they are skipped with a stated reason. In CI
   (`JMOS_DB_MODE=supabase`), a missing stack fails them.
 
+## Client Brain (Increment 2)
+
+- **Where it lives.**
+  - UI: `/w/<workspace>/clients/<client>/brain` (Visão geral, Conhecimento, Regras). It is
+    internal-only; client roles get the shared 404.
+  - Code: `apps/web/src/lib/brain/` (queries, actions, form parsing, error mapping).
+- **How it is written.**
+  - All writes go through the SECURITY DEFINER API frozen in
+    `tests/acceptance/increment-2/README.md`. The tables have no write privileges for API roles.
+  - Knowledge and rules always enter as **proposed**.
+  - Facts, decisions and insights need `knowledge.approve`. Rules need `rule.activate`. By
+    default only admins hold these two (grant them explicitly to others).
+- **Rules: conflicts and resolution.**
+  - Opposite MUST and MUST NOT rules on the same `subject` conflict when they also share scope
+    and priority and their validity overlaps. Both leave `effective_rules` until a person
+    rejects or supersedes one side.
+  - A channel rule shadows the client rule for its subject. A higher priority wins within the
+    same scope.
+- **Trust.** Sources marked `UNTRUSTED_EXTERNAL` can back insights, but never facts, decisions
+  or rules.
+- **Local data.** The seed gives Cliente Demo A a small Brain: brand profile, audience, offer,
+  region, two sources, facts, a decision, an insight and rules.
+- **E2E.** `brain.internal.spec.ts` uses unique subjects and statements per run, so it can run
+  repeatedly on the same database.
+
 ## Repository layout
 
 ```text
