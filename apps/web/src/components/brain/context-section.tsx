@@ -105,8 +105,11 @@ export function ContextSection({
                 {canEdit ? (
                   <div className="mt-2 flex flex-wrap items-start gap-3">
                     <details className="text-sm">
-                      <summary className="cursor-pointer text-xs font-medium text-primary">
-                        Editar<span className="sr-only"> {item.name}</span>
+                      <summary
+                        aria-label={`Editar ${item.name}`}
+                        className="cursor-pointer text-xs font-medium text-primary"
+                      >
+                        Editar
                       </summary>
                       <BrainForm
                         action={saveContextItem}
