@@ -53,10 +53,25 @@ export default async function ClientPage({
           ))}
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">
-          Estratégia, conteúdo, aprovações e demais áreas do cliente chegam nos próximos
-          incrementos.
+          Conteúdo, aprovações e demais áreas do cliente chegam nos próximos incrementos.
         </p>
       </section>
+      {capabilities.includes('client.view') ? (
+        <section aria-labelledby="client-brain" className="mt-4 rounded-lg border bg-surface p-4">
+          <h2 id="client-brain" className="text-sm font-medium">
+            Client Brain
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Marca, públicos, ofertas, regiões, fontes, conhecimento e regras do cliente.
+          </p>
+          <Link
+            href={`/w/${workspace.slug}/clients/${client.id}/brain`}
+            className="mt-3 inline-flex text-sm font-medium text-primary"
+          >
+            Abrir Client Brain
+          </Link>
+        </section>
+      ) : null}
     </>
   );
 }
