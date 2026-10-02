@@ -19,7 +19,10 @@ WORKSPACE_ID = UUID("f1000000-0000-4000-8000-000000000001")
 
 
 def make_job(
-    contract_key: str = "system.healthcheck.v1", payload: dict[str, object] | None = None
+    contract_key: str = "system.healthcheck.v1",
+    payload: dict[str, object] | None = None,
+    *,
+    model_profile: str | None = None,
 ) -> LeasedJob:
     type_, _, version = contract_key.rpartition(".v")
     return LeasedJob(
@@ -32,7 +35,7 @@ def make_job(
         attempt=1,
         max_attempts=3,
         lease_until=datetime.now(UTC) + timedelta(minutes=5),
-        model_profile=None,
+        model_profile=model_profile,
         pipeline_version=None,
         trace_id="trace-test",
     )
@@ -60,6 +63,7 @@ class FakeQueue:
         self.completed: dict[UUID, dict[str, object]] = {}
         self.failed: dict[UUID, JobError] = {}
         self.heartbeats: list[WorkerStatus] = []
+        self.model_profiles: list[str | None] = []
         self.claimed_with: list[list[str]] = []
         self.closed = False
         self.on_claim: Callable[[], None] | None = None
@@ -90,10 +94,16 @@ class FakeQueue:
     def extend_lease(self, job: LeasedJob) -> bool:
         return job.id not in self.completed
 
-    def heartbeat(self, status: WorkerStatus, job_types: Sequence[str]) -> None:
+    def heartbeat(
+        self,
+        status: WorkerStatus,
+        job_types: Sequence[str],
+        active_model_profile: str | None = None,
+    ) -> None:
         if self.on_heartbeat is not None:
             self.on_heartbeat(status)
         self.heartbeats.append(status)
+        self.model_profiles.append(active_model_profile)
 
     def close(self) -> None:
         self.closed = True
