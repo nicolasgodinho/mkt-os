@@ -10,8 +10,9 @@ import pytest
 
 from jmos_worker.config import ConfigError, WorkerConfig
 from jmos_worker.contracts import ContractRegistry
-from jmos_worker.handlers import DEFAULT_HANDLERS, ai_model_check_v1, build_handlers
+from jmos_worker.handlers import DEFAULT_HANDLERS, ai_model_check_v1
 from jmos_worker.models import Evidence, ModelReply, OllamaAdapter, build_messages
+from jmos_worker.pipelines import build_handlers
 from jmos_worker.queue import JobError
 from jmos_worker.runner import Worker
 from tests.support import FakeQueue, make_job
@@ -68,7 +69,7 @@ def adapter(url: str) -> OllamaAdapter:
 def test_model_runtime_defaults_to_loopback_ollama_and_profile_defaults() -> None:
     config = WorkerConfig.from_env(BASE_ENV)
     assert config.ollama_url == "http://127.0.0.1:11434"
-    assert config.model_profiles == {"reasoning": "gpt-oss:20b"}
+    assert config.model_profiles == {"reasoning": "gpt-oss:20b", "transcription": "large-v3"}
 
 
 @pytest.mark.parametrize(
