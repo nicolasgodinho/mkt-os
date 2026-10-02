@@ -10,17 +10,22 @@ function unique(label: string): string {
   return `${label} e2e-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** Calls the API and fails the test on any database error. */
+async function ok(api: Api, fn: string, args: Record<string, unknown>): Promise<unknown> {
+  const result = await api.rpc(fn, args);
+  expect(result.code, `${fn}: ${result.message ?? ''}`).toBeUndefined();
+  return result.data;
+}
+
 /** Content approved internally and sent to Cliente Demo A; returns its ids. */
 async function sendToClient(admin: Api, title: string) {
-  const contentId = (
-    await admin.rpc('create_content', {
-      p_pauta_id: A_PAUTA,
-      p_channel: 'instagram',
-      p_format: 'post',
-      p_title: title,
-    })
-  ).data as string;
-  await admin.rpc('save_content_payload', {
+  const contentId = (await ok(admin, 'create_content', {
+    p_pauta_id: A_PAUTA,
+    p_channel: 'instagram',
+    p_format: 'post',
+    p_title: title,
+  })) as string;
+  await ok(admin, 'save_content_payload', {
     p_content_id: contentId,
     p_payload: {
       headline: 'Sorriso de família',
@@ -28,26 +33,24 @@ async function sendToClient(admin: Api, title: string) {
       cta: 'Agende pelo WhatsApp',
     },
   });
-  const revisionId = (await admin.rpc('submit_for_internal_review', { p_content_id: contentId }))
-    .data as string;
-  const rules = (await admin.rpc('revision_validation', { p_revision_id: revisionId })).data as {
+  const revisionId = (await ok(admin, 'submit_for_internal_review', {
+    p_content_id: contentId,
+  })) as string;
+  const rules = (await ok(admin, 'revision_validation', { p_revision_id: revisionId })) as {
     rule_id: string;
   }[];
   for (const rule of rules) {
-    await admin.rpc('record_rule_check', {
+    await ok(admin, 'record_rule_check', {
       p_revision_id: revisionId,
       p_rule_id: rule.rule_id,
       p_result: 'pass',
     });
   }
-  const approved = await admin.rpc('complete_internal_review', {
+  await ok(admin, 'complete_internal_review', { p_revision_id: revisionId, p_decision: 'approve' });
+  const requestId = (await ok(admin, 'request_client_approval', {
     p_revision_id: revisionId,
-    p_decision: 'approve',
-  });
-  expect(approved.code).toBeUndefined();
-  const requested = await admin.rpc('request_client_approval', { p_revision_id: revisionId });
-  expect(requested.code).toBeUndefined();
-  return { contentId, requestId: requested.data as string };
+  })) as string;
+  return { contentId, requestId };
 }
 
 test.describe('client approval in the portal (mobile)', () => {
@@ -62,7 +65,7 @@ test.describe('client approval in the portal (mobile)', () => {
     const title = unique('Post para aprovar');
     const { contentId } = await sendToClient(admin, title);
     const internalNote = unique('Nota só da equipe');
-    await admin.rpc('add_comment', {
+    await ok(admin, 'add_comment', {
       p_target_type: 'content',
       p_target_id: contentId,
       p_body: internalNote,
@@ -110,7 +113,7 @@ test.describe('client approval in the portal (mobile)', () => {
   test('a request becomes canceled when the team changes the content', async ({ page }) => {
     const admin = await apiAs(requireSupabase(), SEED.users.admin);
     const { contentId, requestId } = await sendToClient(admin, unique('Post alterado'));
-    await admin.rpc('save_content_payload', {
+    await ok(admin, 'save_content_payload', {
       p_content_id: contentId,
       p_payload: { body: 'Texto novo depois do envio.', cta: 'Agende pelo WhatsApp' },
     });
@@ -140,5 +143,8 @@ test.describe('client approval in the portal (mobile)', () => {
       p_decision: 'approve',
     });
     expect(forged.code).toBe('42501');
+
+    // Leave no open request behind: the portal home of the seed client stays short on re-runs.
+    await ok(admin, 'cancel_approval_request', { p_request_id: requestId });
   });
 });

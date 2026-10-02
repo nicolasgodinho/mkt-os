@@ -1,8 +1,9 @@
 -- Builder tests for Increment 6 (ExecPlan 0006): decisions the protected TEST_SPEC does not freeze —
--- decision immutability, audit action names, internal portal preview, helper privileges.
+-- decision immutability, audit action names, internal portal preview, helper privileges, client
+-- comment visibility before sending, stale-request audit.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(8);
+select plan(12);
 
 create function pg_temp.login_as(p_user uuid) returns void language plpgsql as $$
 begin
@@ -49,6 +50,37 @@ select public.decide_approval(current_setting('b.req')::uuid, 'approve', 'Ok');
 select is((select status::text from public.portal_approvals('e6100000-0000-4000-8000-000000000001')), 'approved',
   'the client sees the decided status');
 reset role;
+
+-- Client threads stay hidden until the content is sent to the client.
+select pg_temp.login_as('e6000000-0000-4000-8000-000000000001');
+select set_config('b.c2', public.create_content(current_setting('b.pauta')::uuid, 'instagram', 'post', 'C2')::text, true);
+select public.save_content_payload(current_setting('b.c2')::uuid, '{"body": "Rascunho"}'::jsonb);
+select public.add_comment('content', current_setting('b.c2')::uuid, 'Rascunho para o cliente', 'client');
+reset role;
+select pg_temp.login_as('e6000000-0000-4000-8000-000000000002');
+select is_empty($$ select 1 from public.threads where target_id = current_setting('b.c2')::uuid
+                   union all select 1 from public.comments where body = 'Rascunho para o cliente' $$,
+  'client comments on content not yet sent are not visible to the client');
+reset role;
+select pg_temp.login_as('e6000000-0000-4000-8000-000000000001');
+select set_config('b.r2', public.submit_for_internal_review(current_setting('b.c2')::uuid)::text, true);
+select public.complete_internal_review(current_setting('b.r2')::uuid, 'approve');
+select set_config('b.req2', public.request_client_approval(current_setting('b.r2')::uuid)::text, true);
+reset role;
+select pg_temp.login_as('e6000000-0000-4000-8000-000000000002');
+select is((select count(*)::integer from public.comments where body = 'Rascunho para o cliente'), 1,
+  'once sent, the client thread becomes visible to the client');
+reset role;
+
+-- A stale request is canceled and audited.
+select pg_temp.login_as('e6000000-0000-4000-8000-000000000001');
+select public.save_content_payload(current_setting('b.c2')::uuid, '{"body": "Mudou"}'::jsonb);
+reset role;
+select is((select status::text from public.approval_requests where id = current_setting('b.req2')::uuid),
+  'canceled', 'editing during client review cancels the request');
+select is((select after ->> 'reason' from public.audit_logs
+            where target_id = current_setting('b.req2')::uuid and action = 'approval.canceled'),
+  'stale', 'the stale cancellation is audited');
 
 select throws_ok($$ update public.approval_decisions set comment = 'adulterado' $$,
   null, null, 'approval decisions are immutable, even for the owner');

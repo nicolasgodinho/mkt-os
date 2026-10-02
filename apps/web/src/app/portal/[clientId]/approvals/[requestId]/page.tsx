@@ -75,6 +75,11 @@ export default async function PortalApprovalPage({
         {payload.headline ? <p className="text-lg font-semibold">{payload.headline}</p> : null}
         <p className="mt-2 text-base whitespace-pre-line">{payload.body}</p>
         {payload.cta ? <p className="mt-3 font-medium">{payload.cta}</p> : null}
+        {payload.alt_text ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Descrição da imagem: {payload.alt_text}
+          </p>
+        ) : null}
         {payload.hashtags && payload.hashtags.length > 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">{payload.hashtags.join(' ')}</p>
         ) : null}
@@ -130,6 +135,7 @@ export default async function PortalApprovalPage({
           scope={scope}
           visibility="client"
           canWrite={canComment}
+          headingLevel="h2"
           currentUserId={user.id}
         />
       </div>

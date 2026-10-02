@@ -17,24 +17,28 @@ create type public.approval_status as enum (
 create type public.comment_visibility as enum ('internal', 'client');
 
 alter table public.contents
-  add column client_approved_revision_id uuid references public.content_revisions (id);
+  add column client_approved_revision_id uuid,
+  add foreign key (client_approved_revision_id, id) references public.content_revisions (id, content_id);
 
 create table public.approval_requests (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id),
   content_id uuid not null,
-  revision_id uuid not null references public.content_revisions (id),
+  revision_id uuid not null,
   status public.approval_status not null default 'requested',
   requested_by uuid not null references public.users (id),
   requested_at timestamptz not null default now(),
   due_at timestamptz,
   decided_at timestamptz,
-  foreign key (content_id, client_id) references public.contents (id, client_id)
+  foreign key (content_id, client_id) references public.contents (id, client_id),
+  foreign key (revision_id, content_id) references public.content_revisions (id, content_id)
 );
 -- At most one open request per content.
 create unique index approval_requests_one_open on public.approval_requests (content_id)
   where status = 'requested';
 create index approval_requests_client_idx on public.approval_requests (client_id, status);
+create index approval_requests_content_idx on public.approval_requests (content_id);
+create index approval_requests_revision_idx on public.approval_requests (revision_id);
 
 create table public.approval_decisions (
   id uuid primary key default gen_random_uuid(),
@@ -53,19 +57,21 @@ create table public.threads (
   target_id uuid not null,
   visibility public.comment_visibility not null,
   created_at timestamptz not null default now(),
-  unique (target_type, target_id, visibility)
+  unique (target_type, target_id, visibility),
+  unique (id, client_id)
 );
 
 create table public.comments (
   id uuid primary key default gen_random_uuid(),
-  thread_id uuid not null references public.threads (id),
+  thread_id uuid not null,
   client_id uuid not null references public.clients (id),
   author_id uuid not null references public.users (id),
   -- Display name copied at write time: clients cannot read other people's profiles.
   author_name text not null default '' check (char_length(author_name) <= 200),
   body text not null check (btrim(body) <> '' and char_length(body) <= 4000),
   created_at timestamptz not null default now(),
-  edited_at timestamptz
+  edited_at timestamptz,
+  foreign key (thread_id, client_id) references public.threads (id, client_id)
 );
 create index comments_thread_idx on public.comments (thread_id, created_at);
 
@@ -89,12 +95,24 @@ returns trigger
 language plpgsql
 set search_path = ''
 as $$
+declare
+  v_request_id uuid;
 begin
+  -- Deciding or canceling closes the request before it moves the content, so only a real change
+  -- (a payload edit, or leaving client review any other way) finds an open request here.
   if new.working_payload is distinct from old.working_payload
-     or (old.status = 'client_review' and new.status in ('producing', 'internal_review')) then
-    update public.approval_requests
-       set status = 'canceled', decided_at = now()
-     where content_id = new.id and status = 'requested';
+     or (old.status = 'client_review' and new.status <> 'client_review') then
+    for v_request_id in
+      update public.approval_requests
+         set status = 'canceled', decided_at = now()
+       where content_id = new.id and status = 'requested'
+      returning id
+    loop
+      perform app.audit((select c.workspace_id from public.clients c where c.id = new.client_id),
+                        new.client_id, 'approval.canceled', 'approval_request', v_request_id,
+                        jsonb_build_object('status', 'requested'),
+                        jsonb_build_object('status', 'canceled', 'reason', 'stale'));
+    end loop;
   end if;
   return new;
 end;
@@ -221,8 +239,9 @@ begin
     raise exception 'comment is too long' using errcode = '22023';
   end if;
 
-  select * into v_request from public.approval_requests a where a.id = p_request_id for update;
+  -- Same lock order as content edits (content, then request): no deadlock with a concurrent save.
   select * into v_content from public.contents c where c.id = v_request.content_id for update;
+  select * into v_request from public.approval_requests a where a.id = p_request_id for update;
   if v_request.status <> 'requested' then
     raise exception 'this approval request is no longer open' using errcode = '22023';
   end if;
@@ -270,6 +289,7 @@ begin
   perform app.require_uid();
   select * into v_request from public.approval_requests a where a.id = p_request_id;
   v_workspace_id := app.require_item_capability(v_request.client_id, 'approval.request');
+  perform 1 from public.contents c where c.id = v_request.content_id for update;
   select * into v_request from public.approval_requests a where a.id = p_request_id for update;
   if v_request.status <> 'requested' then
     raise exception 'this approval request is no longer open' using errcode = '22023';
@@ -348,17 +368,18 @@ begin
   ) then
     raise exception 'not found' using errcode = 'P0002';
   end if;
+  -- Client-side: never by read-only viewers, and client-visible comments only.
+  if not v_internal
+     and not (app.client_side_capabilities(v_uid, v_client_id)
+              && array['approval.decide', 'request.submit']::public.capability[]) then
+    raise exception 'permission denied' using errcode = '42501';
+  end if;
   if p_visibility is null or p_visibility not in ('internal', 'client') then
     raise exception 'unknown comment visibility' using errcode = '22023';
   end if;
   v_visibility := p_visibility::public.comment_visibility;
-  if not v_internal then
-    -- Client-side: client-visible comments only, and never by read-only viewers.
-    if v_visibility = 'internal'
-       or not (app.client_side_capabilities(v_uid, v_client_id)
-               && array['approval.decide', 'request.submit']::public.capability[]) then
-      raise exception 'permission denied' using errcode = '42501';
-    end if;
+  if not v_internal and v_visibility = 'internal' then
+    raise exception 'permission denied' using errcode = '42501';
   end if;
   if p_body is null or btrim(p_body) = '' or char_length(p_body) > 4000 then
     raise exception 'comment is required' using errcode = '22023';
@@ -393,15 +414,19 @@ create policy approval_requests_select on public.approval_requests
 create policy approval_decisions_select on public.approval_decisions
   for select to authenticated
   using (app.has_internal_client_access(client_id) or app.is_client_member(client_id));
+-- Clients see client threads only on content that was sent to them (as add_comment requires).
 create policy threads_select on public.threads
   for select to authenticated
   using (app.has_internal_client_access(client_id)
-         or (visibility = 'client' and app.is_client_member(client_id)));
+         or (visibility = 'client' and app.is_client_member(client_id)
+             and exists (select 1 from public.approval_requests a
+                          where a.content_id = threads.target_id)));
 create policy comments_select on public.comments
   for select to authenticated
   using (app.has_internal_client_access(client_id)
          or (app.is_client_member(client_id)
              and exists (select 1 from public.threads t
+                          join public.approval_requests a on a.content_id = t.target_id
                           where t.id = comments.thread_id and t.visibility = 'client')));
 -- Clients see exactly the revisions that were sent to them.
 create policy content_revisions_select_client on public.content_revisions

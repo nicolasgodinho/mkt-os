@@ -4,8 +4,7 @@ import { notFound } from 'next/navigation';
 import { EmptyState, PageHeader, StatusBadge } from '@jmos/ui';
 import { requireSessionUser } from '@/lib/auth/session';
 import { APPROVAL_STATUS, APPROVAL_STATUSES, type ApprovalStatus } from '@/lib/collab/model';
-import { listClientApprovals } from '@/lib/collab/queries';
-import { listContents } from '@/lib/content/queries';
+import { contentTitles, listClientApprovals } from '@/lib/collab/queries';
 import {
   getWorkspaceBySlug,
   getWorkspaceCapabilities,
@@ -44,17 +43,9 @@ export default async function ApprovalsPage({
     status,
   );
   const clientName = new Map(clients.map((client) => [client.id, client.name]));
-  const contentIds = new Set(approvals.map((request) => request.content_id));
-  const contents = (
-    await Promise.all(
-      [...new Set(approvals.map((request) => request.client_id))].map((clientId) =>
-        listContents(clientId),
-      ),
-    )
-  )
-    .flat()
-    .filter((content) => contentIds.has(content.id));
-  const contentTitle = new Map(contents.map((content) => [content.id, content.title]));
+  const contentTitle = await contentTitles([
+    ...new Set(approvals.map((request) => request.content_id)),
+  ]);
   const base = `/w/${workspace.slug}/approvals`;
 
   return (

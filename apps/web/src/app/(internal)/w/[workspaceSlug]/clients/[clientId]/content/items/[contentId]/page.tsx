@@ -82,7 +82,9 @@ export default async function ContentStudioPage({
   const blocking = validation.filter((row) => row.blocking).length;
   const scope = { workspaceSlug: workspace.slug, clientId: client.id };
   const base = `/w/${workspace.slug}/clients/${client.id}/content`;
-  const editable = ['ready', 'producing', 'internal_review', 'approved'].includes(content.status);
+  const editable = ['ready', 'producing', 'internal_review', 'client_review', 'approved'].includes(
+    content.status,
+  );
   const payload = content.working_payload;
 
   return (
@@ -230,6 +232,12 @@ export default async function ContentStudioPage({
             ]}
             className="mt-3 max-w-2xl"
           >
+            {content.status === 'client_review' ? (
+              <p className="text-xs text-status-warning">
+                Editar agora cancela o pedido de aprovação do cliente e volta o conteúdo para
+                produção.
+              </p>
+            ) : null}
             {content.status === 'approved' || content.status === 'internal_review' ? (
               <p className="text-xs text-status-warning">
                 Editar agora volta o conteúdo para produção. A revisão{' '}
@@ -302,6 +310,7 @@ export default async function ContentStudioPage({
                   <span className="text-xs text-muted-foreground">
                     revisão {revision?.revision_number.toString() ?? '?'} · pedido em{' '}
                     {formatDateTime(request.requested_at)}
+                    {request.due_at ? ` · prazo ${formatDateTime(request.due_at) ?? ''}` : ''}
                   </span>
                 </li>
               );
@@ -332,6 +341,15 @@ export default async function ContentStudioPage({
               <p className="text-xs text-muted-foreground">
                 Só uma revisão aprovada internamente pode ir para o cliente.
               </p>
+            ) : null}
+            {openRequest === undefined && canSendToClient ? (
+              <TextField
+                id="approval-due"
+                name="dueAt"
+                type="date"
+                label="Prazo para o cliente (opcional)"
+                className="max-w-48"
+              />
             ) : null}
           </ActionForm>
         ) : null}

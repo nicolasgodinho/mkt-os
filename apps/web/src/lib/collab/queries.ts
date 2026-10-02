@@ -62,6 +62,23 @@ export async function listClientApprovals(
   return z.array(approvalRequestSchema).parse(data);
 }
 
+/** Titles of the given contents (internal staff only: clients cannot read `contents`). */
+export async function contentTitles(contentIds: readonly string[]): Promise<Map<string, string>> {
+  if (contentIds.length === 0) return new Map();
+  const supabase = await reader();
+  const { data, error } = await supabase
+    .from('contents')
+    .select('id, title')
+    .in('id', [...contentIds]);
+  if (error !== null) throw new CollabDataError('content titles', error.code);
+  return new Map(
+    z
+      .array(z.object({ id: z.uuid(), title: z.string() }))
+      .parse(data)
+      .map((row) => [row.id, row.title]),
+  );
+}
+
 export async function getApprovalRequest(requestId: string): Promise<ApprovalRequest | null> {
   const supabase = await reader();
   const { data, error } = await supabase

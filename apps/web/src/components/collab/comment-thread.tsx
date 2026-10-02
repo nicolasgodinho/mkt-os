@@ -13,6 +13,8 @@ interface CommentThreadProps {
   visibility: 'internal' | 'client';
   canWrite: boolean;
   currentUserId: string;
+  /** Heading level that fits the surrounding page outline. */
+  headingLevel?: 'h2' | 'h3';
 }
 
 function hiddenScope(scope: CommentThreadProps['scope']): Record<string, string> {
@@ -31,13 +33,14 @@ export function CommentThread({
   visibility,
   canWrite,
   currentUserId,
+  headingLevel: Heading = 'h3',
 }: CommentThreadProps) {
   const headingId = `thread-${visibility}`;
   return (
     <section aria-labelledby={headingId} className="rounded-lg border bg-surface p-4">
-      <h3 id={headingId} className="text-sm font-medium">
+      <Heading id={headingId} className="text-sm font-medium">
         {title}
-      </h3>
+      </Heading>
       {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
       {comments.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">Nenhum comentário ainda.</p>
@@ -59,8 +62,8 @@ export function CommentThread({
       {canWrite ? (
         <ActionForm
           action={addComment}
-          hidden={hiddenScope(scope)}
-          buttons={[{ label: 'Comentar', value: visibility }]}
+          hidden={{ ...hiddenScope(scope), visibility }}
+          buttons={[{ label: 'Comentar' }]}
           pendingLabel="Enviando…"
           resetOnSuccess
           className="mt-3"

@@ -79,7 +79,7 @@ export async function requestClientApproval(
     .extend({
       revisionId: z.uuid(),
       dueAt: z
-        .string()
+        .union([z.literal(''), z.iso.date()])
         .optional()
         .transform((value) => (value === undefined || value === '' ? null : value)),
     })
@@ -135,7 +135,7 @@ export async function addComment(_p: ActionState, formData: FormData): Promise<A
     .extend({
       contentId: z.uuid(),
       body: z.string().trim().min(1).max(4000),
-      decision: z.enum(['internal', 'client']).optional(),
+      visibility: z.enum(['internal', 'client']),
     })
     .safeParse(values(formData));
   if (!parsed.success) return { status: 'error', message: 'Escreva um comentário.' };
@@ -146,7 +146,7 @@ export async function addComment(_p: ActionState, formData: FormData): Promise<A
       p_target_type: 'content',
       p_target_id: f.contentId,
       p_body: f.body,
-      p_visibility: f.decision ?? 'client',
+      p_visibility: f.visibility,
     },
     pathsFor(f),
   );
