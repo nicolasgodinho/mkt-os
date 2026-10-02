@@ -32,6 +32,8 @@ create table public.integration_connections (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (client_id, provider),
+  -- A folder feeds exactly one client: the same folder under two clients would mix their files.
+  unique (provider, root_folder_id),
   unique (id, client_id),
   foreign key (client_id, workspace_id) references public.clients (id, workspace_id)
 );
@@ -56,6 +58,9 @@ create table public.file_records (
   unique (connection_id, drive_file_id),
   foreign key (connection_id, client_id) references public.integration_connections (id, client_id)
 );
+-- Finds the sync jobs of one connection without scanning the whole queue.
+create index jobs_drive_sync_connection_idx on public.jobs ((input ->> 'connection_id'))
+  where type = 'drive.sync';
 create index file_records_client_idx on public.file_records (client_id, sync_status);
 create index file_records_index_pending_idx on public.file_records (index_status)
   where index_status = 'pending';
@@ -74,7 +79,7 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('drive.sync:' || p_connection.id::text, 0));
   select j.id into v_job_id
     from public.jobs j
-   where j.type = 'drive.sync' and (j.input ->> 'connection_id')::uuid = p_connection.id
+   where j.type = 'drive.sync' and j.input ->> 'connection_id' = p_connection.id::text
      and j.status in ('queued', 'retry_wait', 'running')
    order by j.created_at desc
    limit 1;
@@ -87,7 +92,7 @@ begin
   -- failure states stay on one job instead of piling up.
   select j.id into v_job_id
     from public.jobs j
-   where j.type = 'drive.sync' and (j.input ->> 'connection_id')::uuid = p_connection.id
+   where j.type = 'drive.sync' and j.input ->> 'connection_id' = p_connection.id::text
      and j.status in ('failed', 'dead_letter', 'canceled')
    order by j.created_at desc, j.id
    limit 1;
@@ -139,6 +144,11 @@ begin
               where i.client_id = p_client_id and i.provider = 'google_drive') then
     raise exception 'this client already has a drive connection' using errcode = '22023';
   end if;
+  perform pg_advisory_xact_lock(hashtextextended('drive.folder:' || p_root_folder_id, 0));
+  if exists (select 1 from public.integration_connections i
+              where i.provider = 'google_drive' and i.root_folder_id = p_root_folder_id) then
+    raise exception 'this folder is already connected to a client' using errcode = '22023';
+  end if;
 
   insert into public.integration_connections (workspace_id, client_id, provider, root_folder_id,
                                               credential_ref, sync_interval_minutes, created_by)
@@ -182,7 +192,7 @@ begin
   returning * into v_connection;
   if p_status = 'paused' then
     update public.jobs j set status = 'canceled', finished_at = now()
-     where j.type = 'drive.sync' and (j.input ->> 'connection_id')::uuid = p_connection_id
+     where j.type = 'drive.sync' and j.input ->> 'connection_id' = p_connection_id::text
        and j.status in ('queued', 'retry_wait');
   else
     perform app.queue_drive_sync(v_connection, now());
@@ -270,7 +280,9 @@ begin
      and j.lease_owner = p_worker_id
      and j.attempts = p_attempt
      and j.type = 'drive.sync'
-     and j.schema_version = 1;
+     and j.schema_version = 1
+     -- A paused connection is never listed, even by a job that was already running or retrying.
+     and i.status = 'active';
 end;
 $$;
 
@@ -314,9 +326,11 @@ begin
        or char_length(v_item ->> 'mime_type') not between 1 and 200
        or jsonb_typeof(v_item -> 'revision') is distinct from 'string'
        or char_length(v_item ->> 'revision') not between 1 and 200
-       or (v_item ? 'size_bytes' and jsonb_typeof(v_item -> 'size_bytes') <> 'number')
+       or (v_item ? 'size_bytes' and (jsonb_typeof(v_item -> 'size_bytes') <> 'number'
+                                      or (v_item ->> 'size_bytes') !~ '^[0-9]{1,18}$'))
        or (v_item ? 'md5_checksum' and coalesce(v_item ->> 'md5_checksum', '') !~ '^[a-f0-9]{32}$')
-       or (v_item ? 'modified_at' and jsonb_typeof(v_item -> 'modified_at') <> 'string')
+       or (v_item ? 'modified_at' and coalesce(v_item ->> 'modified_at', '')
+             !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$')
        or (v_item ->> 'drive_file_id') = any (v_seen) then
       raise exception 'invalid drive sync result' using errcode = '22023';
     end if;
@@ -357,9 +371,6 @@ begin
               v_item ->> 'revision', (v_item ->> 'modified_at')::timestamptz,
               (v_item ->> 'size_bytes')::bigint, v_item ->> 'md5_checksum');
       v_added := v_added + 1;
-    else
-      update public.file_records f set last_seen_at = now()
-       where f.connection_id = v_connection.id and f.drive_file_id = v_item ->> 'drive_file_id';
     end if;
   end loop;
 
@@ -380,6 +391,44 @@ begin
                                  now() + make_interval(mins => v_connection.sync_interval_minutes));
   end if;
   return 'completed';
+end;
+$$;
+
+-- The job center's generic retry would bypass the one-open-sync rule and pausing: Drive syncs are
+-- retried through request_drive_sync (the Drive page) instead. Same function as Increment 3,
+-- plus that refusal.
+create or replace function public.retry_job(p_job_id uuid)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_job public.jobs := app.require_manageable_job(p_job_id);
+begin
+  if v_job.type = 'drive.sync' then
+    raise exception 'drive syncs are retried from the drive page' using errcode = '22023';
+  end if;
+  if v_job.status not in ('failed', 'dead_letter', 'canceled') then
+    raise exception 'only failed, dead-lettered or canceled jobs can be retried'
+      using errcode = '22023';
+  end if;
+  if v_job.attempts >= 20 then
+    raise exception 'job has no attempts left' using errcode = '22023';
+  end if;
+
+  -- Attempts are kept (fencing); the job gets up to three more attempts within the hard cap.
+  update public.jobs j
+     set status = 'queued',
+         run_after = now(),
+         finished_at = null,
+         max_attempts = greatest(j.max_attempts, least(j.attempts + 3, 20))
+   where j.id = v_job.id;
+
+  perform app.audit(v_job.workspace_id, v_job.client_id, 'job.retried', 'job', v_job.id,
+                    jsonb_build_object('status', v_job.status, 'attempts', v_job.attempts),
+                    jsonb_build_object('status', 'queued'));
 end;
 $$;
 
