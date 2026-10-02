@@ -12,5 +12,6 @@ export async function capabilityFlags(workspaceId: string) {
     create: capabilities.includes('content.create'),
     edit: capabilities.includes('content.edit'),
     review: capabilities.includes('content.review_internal'),
+    requestApproval: capabilities.includes('approval.request'),
   };
 }
