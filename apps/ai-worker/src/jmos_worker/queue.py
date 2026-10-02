@@ -90,7 +90,12 @@ class JobQueue(Protocol):
 
     def extend_lease(self, job: LeasedJob) -> bool: ...
 
-    def heartbeat(self, status: WorkerStatus, job_types: Sequence[str]) -> None: ...
+    def heartbeat(
+        self,
+        status: WorkerStatus,
+        job_types: Sequence[str],
+        active_model_profile: str | None = None,
+    ) -> None: ...
 
     def close(self) -> None: ...
 
@@ -180,10 +185,15 @@ class PostgresJobQueue:
         )
         return value is True
 
-    def heartbeat(self, status: WorkerStatus, job_types: Sequence[str]) -> None:
+    def heartbeat(
+        self,
+        status: WorkerStatus,
+        job_types: Sequence[str],
+        active_model_profile: str | None = None,
+    ) -> None:
         self._connection().execute(
-            "select worker.heartbeat(%s, %s, %s, %s)",
-            (self._worker_id, status.value, self._version, list(job_types)),
+            "select worker.heartbeat(%s, %s, %s, %s, %s)",
+            (self._worker_id, status.value, self._version, list(job_types), active_model_profile),
         )
 
     def close(self) -> None:

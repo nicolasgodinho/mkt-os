@@ -6,12 +6,19 @@ import os
 import re
 import socket
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 # Mirrors worker.assert_worker_id in supabase/migrations (the database is the enforcement point;
 # this only turns a bad value into a clear configuration error at startup).
 WORKER_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
 LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR"})
+# The model runtime is local-only (docs/08 §2): the worker never reaches it over the network, and
+# the runtime itself must never be exposed to the internet.
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
+# Task profile -> default local model (docs/08 §3). Overridable per profile through the environment.
+DEFAULT_MODEL_PROFILES: Mapping[str, str] = {"reasoning": "gpt-oss:20b"}
 
 
 class ConfigError(ValueError):
@@ -26,6 +33,9 @@ class WorkerConfig:
     lease_seconds: int = 300
     heartbeat_interval_seconds: float = 15.0
     log_level: str = "INFO"
+    ollama_url: str = DEFAULT_OLLAMA_URL
+    model_profiles: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_MODEL_PROFILES))
+    model_timeout_seconds: float = 120.0
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> WorkerConfig:
@@ -44,10 +54,33 @@ class WorkerConfig:
             raise ConfigError(f"JMOS_WORKER_LOG_LEVEL must be one of {sorted(LOG_LEVELS)}")
 
         lease_seconds = _int(env, "JMOS_WORKER_LEASE_SECONDS", 300, low=10, high=3600)
-        heartbeat = _float(env, "JMOS_WORKER_HEARTBEAT_SECONDS", 15.0, low=1.0, high=300.0)
+        # The job center shows a worker as offline after 60 s without a heartbeat.
+        heartbeat = _float(env, "JMOS_WORKER_HEARTBEAT_SECONDS", 15.0, low=1.0, high=30.0)
         if heartbeat >= lease_seconds:
             raise ConfigError(
                 "JMOS_WORKER_HEARTBEAT_SECONDS must be shorter than JMOS_WORKER_LEASE_SECONDS"
+            )
+
+        ollama_url = env.get("JMOS_OLLAMA_URL", "").strip() or DEFAULT_OLLAMA_URL
+        parts = urlsplit(ollama_url)
+        if (
+            parts.scheme not in ("http", "https")
+            or parts.hostname not in LOOPBACK_HOSTS
+            or parts.username is not None
+            or parts.password is not None
+        ):
+            raise ConfigError(
+                "JMOS_OLLAMA_URL must be an http(s) URL on a loopback address "
+                "(localhost, 127.0.0.1 or ::1)"
+            )
+        model_profiles = {
+            profile: env.get(f"JMOS_MODEL_{profile.upper()}", "").strip() or default
+            for profile, default in DEFAULT_MODEL_PROFILES.items()
+        }
+        model_timeout = _float(env, "JMOS_MODEL_TIMEOUT_SECONDS", 120.0, low=1.0, high=1800.0)
+        if model_timeout >= lease_seconds:
+            raise ConfigError(
+                "JMOS_MODEL_TIMEOUT_SECONDS must be shorter than JMOS_WORKER_LEASE_SECONDS"
             )
 
         return cls(
@@ -57,6 +90,9 @@ class WorkerConfig:
             lease_seconds=lease_seconds,
             heartbeat_interval_seconds=heartbeat,
             log_level=log_level,
+            ollama_url=ollama_url,
+            model_profiles=model_profiles,
+            model_timeout_seconds=model_timeout,
         )
 
     @property

@@ -49,8 +49,31 @@ stack. In staging and production, an operator sets the role's password through s
 | `JMOS_WORKER_ID` | `<hostname>-<pid>` | Lease owner / heartbeat id |
 | `JMOS_WORKER_POLL_SECONDS` | `2` | Idle poll interval |
 | `JMOS_WORKER_LEASE_SECONDS` | `300` | Lease length per attempt |
-| `JMOS_WORKER_HEARTBEAT_SECONDS` | `15` | Liveness update interval (must be < lease) |
+| `JMOS_WORKER_HEARTBEAT_SECONDS` | `15` | Liveness update interval, at most 30 s and shorter than the lease (the job center shows a worker as offline after 60 s of silence; a busy worker keeps beating while a job runs) |
 | `JMOS_WORKER_LOG_LEVEL` | `INFO` | JSON-lines log level |
+| `JMOS_OLLAMA_URL` | `http://127.0.0.1:11434` | Local model runtime. **Loopback addresses only**: never expose Ollama to the network |
+| `JMOS_MODEL_REASONING` | `gpt-oss:20b` | Model behind the `reasoning` task profile (docs/08 §3) |
+| `JMOS_MODEL_TIMEOUT_SECONDS` | `120` | Per-request model timeout (must be shorter than the lease) |
+
+## Models (Increment 3)
+
+Domain code asks for a task **profile** (`reasoning` for now), never for a model name. `models.py`
+holds the `ModelAdapter` protocol and `OllamaAdapter` (`/api/chat`, JSON output, temperature 0).
+
+- **Prompt-injection rule (docs/08 §10).** `build_messages` keeps pipeline instructions in the
+  system message. Evidence goes into a separate user message, serialized as JSON inside an
+  `<untrusted_evidence>` block that is labelled as data. Model output is untrusted too: the
+  runner validates it against the job contract before it is written.
+- **Errors.**
+  | Situation | Result |
+  |---|---|
+  | Runtime unreachable, or HTTP 5xx | `model_unavailable` (retryable, with backoff) |
+  | Model not installed (HTTP 404) | `model_not_found` (permanent; pull the model, then retry the job) |
+  | Model answers without JSON | `model_output_invalid` (permanent) |
+- **`ai.model_check.v1`.** Requested from **Automações → Testes do sistema**. It sends a fixed
+  prompt and records `model_profile`, `model`, `latency_ms` and `ok`.
+- **Setup.** Install Ollama on the worker machine, then run `ollama pull gpt-oss:20b`. Keep
+  Ollama bound to `127.0.0.1`, which is its default.
 
 Exit codes: `2` configuration error, `3` role too privileged, `4` database unreachable at startup.
 Once running, database outages are logged and retried with backoff. The process does not exit.
