@@ -107,6 +107,22 @@ export default async function ClientPage({
           </Link>
         </section>
       ) : null}
+      {capabilities.includes('client.view') ? (
+        <section aria-labelledby="client-drive" className="mt-4 rounded-lg border bg-surface p-4">
+          <h2 id="client-drive" className="text-sm font-medium">
+            Drive
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pasta do cliente no Google Drive: arquivos sincronizados e estado da indexação.
+          </p>
+          <Link
+            href={`/w/${workspace.slug}/clients/${client.id}/drive`}
+            className="mt-3 inline-flex text-sm font-medium text-primary"
+          >
+            Abrir Drive
+          </Link>
+        </section>
+      ) : null}
     </>
   );
 }

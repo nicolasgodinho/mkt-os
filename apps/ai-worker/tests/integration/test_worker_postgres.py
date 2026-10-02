@@ -16,6 +16,7 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -26,11 +27,15 @@ from psycopg.rows import dict_row
 
 from jmos_worker import __version__
 from jmos_worker.contracts import ContractRegistry
+from jmos_worker.drive import GoogleDriveClient
 from jmos_worker.handlers import DEFAULT_HANDLERS
 from jmos_worker.models import ModelReply
 from jmos_worker.pipelines import build_handlers
 from jmos_worker.queue import CompletionOutcome, LeasedJob, PostgresJobQueue, WorkerRoleError
 from jmos_worker.runner import Worker
+from tests.unit.test_drive import ROOT as DRIVE_ROOT
+from tests.unit.test_drive import TREE as DRIVE_TREE
+from tests.unit.test_drive import FakeDrive, write_key
 
 pytestmark = pytest.mark.integration
 
@@ -334,4 +339,76 @@ def test_meeting_extraction_writes_proposals_exactly_once(
         admin.execute("delete from public.meetings where id = %s", (meeting_id,))
         admin.execute("delete from public.jobs where id = %s", (job_id,))
         admin.execute("delete from public.sources where id = %s", (source_id,))
+        admin.execute("delete from public.clients where id = %s", (client_id,))
+
+
+def test_drive_sync_applies_the_snapshot_once_and_schedules_the_next(
+    admin: AdminConnection, workspace_id: UUID, tmp_path: Path
+) -> None:
+    client_id, connection_id = uuid4(), uuid4()
+    admin.execute(
+        "insert into public.clients (id, workspace_id, name, slug) values (%s, %s, 'IT', %s)",
+        (client_id, workspace_id, f"it-{client_id.hex[:12]}"),
+    )
+    admin.execute(
+        "insert into public.integration_connections"
+        " (id, workspace_id, client_id, provider, root_folder_id, created_by)"
+        " select %s, %s, %s, 'google_drive', %s, id from public.users limit 1",
+        (connection_id, workspace_id, client_id, DRIVE_ROOT),
+    )
+    row = admin.execute(
+        "select app.enqueue_job(%s, %s, 'drive.sync', 1, %s, %s::jsonb, 100)",
+        (
+            workspace_id,
+            client_id,
+            f"it:{uuid4()}",
+            json.dumps({"connection_id": str(connection_id)}),
+        ),
+    ).fetchone()
+    assert row is not None
+    job_id = cast(UUID, row[0])
+    write_key(tmp_path)
+
+    queue = PostgresJobQueue(
+        env("JMOS_TEST_WORKER_DATABASE_URL"), worker_id="it-drive", version="t", lease_seconds=60
+    )
+    worker = Worker(
+        worker_id="it-drive",
+        queue=queue,
+        handlers=build_handlers(
+            None,
+            drive_credentials_dir=tmp_path,
+            drive_client_factory=lambda account: GoogleDriveClient(account, FakeDrive(DRIVE_TREE)),
+        ),
+        contracts=ContractRegistry.load_packaged(),
+        poll_interval_seconds=0.05,
+        heartbeat_interval_seconds=5,
+    )
+    try:
+        for _ in range(20):
+            if job_row(admin, job_id)["status"] in TERMINAL:
+                break
+            worker.run_once()
+        assert job_row(admin, job_id)["status"] == "completed"
+        files = admin.execute(
+            "select drive_file_id, sync_status::text, index_status::text from public.file_records"
+            " where connection_id = %s order by drive_file_id",
+            (connection_id,),
+        ).fetchall()
+        assert files == [
+            ("fileA0001", "synced", "pending"),
+            ("fileA0002", "synced", "pending"),
+            ("fileB0001", "synced", "pending"),
+        ]
+        scheduled = admin.execute(
+            "select count(*) from public.jobs where type = 'drive.sync' and status = 'queued'"
+            " and run_after > now() and input ->> 'connection_id' = %s",
+            (str(connection_id),),
+        ).fetchone()
+        assert scheduled == (1,)
+    finally:
+        queue.close()
+        admin.execute("delete from public.file_records where connection_id = %s", (connection_id,))
+        admin.execute("delete from public.jobs where client_id = %s", (client_id,))
+        admin.execute("delete from public.integration_connections where id = %s", (connection_id,))
         admin.execute("delete from public.clients where id = %s", (client_id,))
