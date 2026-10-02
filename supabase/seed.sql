@@ -167,6 +167,54 @@ insert into public.rules (id, client_id, source_id, type, subject, statement, st
    'Não divulgar preços de tratamentos.', 'proposed',
    '00000000-0000-4000-8000-000000000002', null, null);
 
+-- Meeting intelligence (Increment 4): a reviewed-ready meeting of Cliente Demo A. The extraction job
+-- is seeded as completed so the review screen has proposals without a running worker.
+insert into public.sources (id, client_id, type, title, trust_level, created_by, occurred_at) values
+  ('30000000-0000-4000-8000-000000000092', '20000000-0000-4000-8000-00000000000a',
+   'meeting', 'Reunião: Planejamento do trimestre', 'FIRST_PARTY',
+   '00000000-0000-4000-8000-000000000002', '2026-09-28 14:00-03');
+insert into public.meetings (id, client_id, title, starts_at, ends_at, participants, recording_ref,
+                             transcript_source_id, processing_status, owner_id) values
+  ('31000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-00000000000a',
+   'Planejamento do trimestre', '2026-09-28 14:00-03', '2026-09-28 15:00-03',
+   '[{"name": "Ana (Cliente Demo A)"}, {"name": "Estrategista Jansen"}]',
+   'cliente-demo-a/planejamento-trimestre.m4a', '30000000-0000-4000-8000-000000000092',
+   'in_review', '00000000-0000-4000-8000-000000000002');
+insert into public.meeting_transcripts (meeting_id, revision, text, origin, created_by) values
+  ('31000000-0000-4000-8000-000000000001', 1,
+   'Ana: A partir de novembro vamos abrir aos domingos. Decidimos lançar a campanha de clareamento em novembro. Prefiro uma linguagem bem acolhedora. Talvez valha testar vídeos curtos. Vocês podem nos mandar as fotos das unidades?',
+   'manual', '00000000-0000-4000-8000-000000000002');
+insert into public.jobs (id, workspace_id, client_id, type, schema_version, idempotency_key, input,
+                         status, attempts, model_profile, pipeline_version, result, created_by,
+                         started_at, finished_at) values
+  ('31000000-0000-4000-8000-0000000000a1', '10000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', 'meeting.extract', 1,
+   'meeting.extract.v1:31000000-0000-4000-8000-000000000001:1',
+   '{"meeting_id": "31000000-0000-4000-8000-000000000001", "transcript_revision": 1}',
+   'completed', 1, 'reasoning', 'meeting.extract/1', '{"proposals": 5}',
+   '00000000-0000-4000-8000-000000000002', now(), now());
+insert into public.meeting_proposals (id, meeting_id, client_id, job_id, transcript_revision, kind,
+                                      statement, rule_type, subject, confidence, evidence_quote) values
+  ('31000000-0000-4000-8000-0000000000b1', '31000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '31000000-0000-4000-8000-0000000000a1', 1, 'fact',
+   'A clínica passa a abrir aos domingos a partir de novembro.', null, null, 0.90,
+   'A partir de novembro vamos abrir aos domingos'),
+  ('31000000-0000-4000-8000-0000000000b2', '31000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '31000000-0000-4000-8000-0000000000a1', 1, 'decision',
+   'Lançar a campanha de clareamento em novembro.', null, null, 0.85,
+   'Decidimos lançar a campanha de clareamento em novembro'),
+  ('31000000-0000-4000-8000-0000000000b3', '31000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '31000000-0000-4000-8000-0000000000a1', 1, 'rule',
+   'Prefira uma linguagem acolhedora.', 'PREFER', 'tom', 0.70,
+   'Prefiro uma linguagem bem acolhedora'),
+  ('31000000-0000-4000-8000-0000000000b4', '31000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '31000000-0000-4000-8000-0000000000a1', 1, 'insight',
+   'Vídeos curtos podem ser um formato a testar.', null, null, 0.40,
+   'Talvez valha testar vídeos curtos'),
+  ('31000000-0000-4000-8000-0000000000b5', '31000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '31000000-0000-4000-8000-0000000000a1', 1, 'task',
+   'Pedir ao cliente as fotos das unidades.', null, null, 0.60,
+   'Vocês podem nos mandar as fotos das unidades?');
 -- Content core (Increment 5).
 -- Cliente Demo A: a ready pauta with an approved post (revision 1 approved).
 insert into public.pautas (id, client_id, title, status, objective, audience_ids, message, cta,

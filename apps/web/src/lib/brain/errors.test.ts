@@ -3,9 +3,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { brainErrorMessage, isExpectedBrainError } from './errors';
 
-const MIGRATIONS = ['20261001120000_client_brain.sql', '20261002160000_content_core.sql'].map(
-  (name) => path.resolve(import.meta.dirname, '../../../../../supabase/migrations', name),
-);
+const MIGRATIONS = [
+  '20261001120000_client_brain.sql',
+  '20261002140000_meeting_intelligence.sql',
+  '20261002160000_content_core.sql',
+].map((name) => path.resolve(import.meta.dirname, '../../../../../supabase/migrations', name));
 const GENERIC_INVALID = 'Dados inválidos. Revise os campos e tente novamente.';
 
 describe('brainErrorMessage', () => {

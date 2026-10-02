@@ -71,6 +71,8 @@ failure and prints a summary. CI runs the same command.
 - Writes to the Identity context go only through the capability-checked database API
   (`create_client`, `set_workspace_member`, … — see `tests/acceptance/increment-1/README.md`).
   Inaccessible targets answer `P0002 not found`, exactly like missing ones.
+- Signing out ends only the current browser's session (`scope: 'local'`). Supabase's default would
+  revoke every session of the user, including other devices and parallel E2E workers.
 - Seeded local identities (password `jmos-local-dev-password`, local/CI only):
 
   | E-mail | Access |

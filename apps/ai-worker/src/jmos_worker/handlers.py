@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from jmos_worker.models import ModelAdapter, build_messages
-from jmos_worker.queue import JobError, LeasedJob
+from jmos_worker.queue import JobError, LeasedJob, MeetingContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +25,8 @@ class JobContext:
     # Long-running handlers call this between steps; False means the lease was lost and the
     # handler should stop (another attempt owns the job now).
     extend_lease: Callable[[], bool]
+    # Meeting content through the lease (ADR 0003); None when the lease is no longer held.
+    meeting_for_job: Callable[[], MeetingContext | None] = lambda: None
 
 
 Handler = Callable[[JobContext, Mapping[str, object]], dict[str, object]]
@@ -77,11 +79,3 @@ def ai_model_check_v1(adapter: ModelAdapter) -> Handler:
 DEFAULT_HANDLERS: Mapping[str, Handler] = {
     "system.healthcheck.v1": system_healthcheck_v1,
 }
-
-
-def build_handlers(adapter: ModelAdapter | None) -> dict[str, Handler]:
-    """All handlers this worker can run; model jobs only when a model adapter is configured."""
-    handlers = dict(DEFAULT_HANDLERS)
-    if adapter is not None:
-        handlers["ai.model_check.v1"] = ai_model_check_v1(adapter)
-    return handlers

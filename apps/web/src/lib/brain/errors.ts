@@ -30,6 +30,24 @@ const INVALID_INPUT_MESSAGES = new Map<string, string>(
     'rule validity has already ended':
       'A validade desta regra já terminou. Proponha uma nova regra com outra data.',
     'unknown context kind': 'Tipo de item inválido.',
+    // Meeting intelligence (Increment 4)
+    'only proposed items can be reviewed':
+      'Esta proposta já foi revisada. Atualize a página para ver o estado atual.',
+    'tasks cannot be promoted yet':
+      'Tarefas e perguntas ainda não podem virar itens do sistema (chegam com a v0.2). Rejeite ou anote fora.',
+    'meeting has no transcript': 'Salve uma transcrição antes de extrair o conhecimento.',
+    'meeting has no recording reference':
+      'Informe a referência da gravação antes de pedir a transcrição.',
+    'a meeting cannot end before it starts': 'O fim da reunião precisa ser depois do início.',
+    'invalid recording reference':
+      'Referência de gravação inválida: use um caminho relativo dentro da pasta de mídia (sem "..").',
+    'invalid participants': 'Participantes inválidos.',
+    'title is too long': 'O título é longo demais.',
+    'transcript is too long': 'A transcrição é longa demais.',
+    'starts_at is required': 'Informe a data e a hora de início.',
+    // Raised to the worker only; mapped for completeness of the contract.
+    'invalid extraction result': 'O processamento devolveu um resultado inválido.',
+    'invalid transcription result': 'O processamento devolveu um resultado inválido.',
     // Content core (Increment 5)
     'an initiative cannot end before it starts':
       'O fim da iniciativa precisa ser depois do início.',

@@ -73,6 +73,25 @@ export default async function ClientPage({
         </section>
       ) : null}
       {capabilities.includes('client.view') ? (
+        <section
+          aria-labelledby="client-meetings"
+          className="mt-4 rounded-lg border bg-surface p-4"
+        >
+          <h2 id="client-meetings" className="text-sm font-medium">
+            Reuniões
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Transcrições e conhecimento extraído pela IA local, para revisão.
+          </p>
+          <Link
+            href={`/w/${workspace.slug}/clients/${client.id}/meetings`}
+            className="mt-3 inline-flex text-sm font-medium text-primary"
+          >
+            Abrir reuniões
+          </Link>
+        </section>
+      ) : null}
+      {capabilities.includes('client.view') ? (
         <section aria-labelledby="client-content" className="mt-4 rounded-lg border bg-surface p-4">
           <h2 id="client-content" className="text-sm font-medium">
             Conteúdo
