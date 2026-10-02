@@ -41,7 +41,9 @@ select set_eq(
        from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'worker' and p.prosecdef $$,
-  array['claim_job', 'complete_job', 'extend_lease', 'fail_job', 'heartbeat'],
+  array['claim_job', 'complete_job', 'extend_lease', 'fail_job', 'heartbeat',
+        -- ADR 0003: job-scoped, lease-fenced domain functions for meeting jobs.
+        'meeting_for_job', 'complete_meeting_extraction', 'complete_meeting_transcription'],
   'only the worker API functions run with elevated (definer) rights'
 );
 select ok(

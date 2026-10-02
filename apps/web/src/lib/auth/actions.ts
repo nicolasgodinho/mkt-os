@@ -35,7 +35,9 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
 export async function signOut(): Promise<void> {
   const supabase = await createSupabaseWriter();
   if (supabase !== null) {
-    const { error } = await supabase.auth.signOut();
+    // Ends this browser's session only. The Supabase default ('global') would also revoke the
+    // user's sessions on every other device.
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error !== null) throw new Error(`sign-out failed (${error.code ?? 'unknown'})`);
   }
   redirect('/login');

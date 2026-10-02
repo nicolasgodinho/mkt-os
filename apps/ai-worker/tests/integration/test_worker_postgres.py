@@ -9,11 +9,13 @@ Run through `pnpm test:integration`, which provides:
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -25,7 +27,9 @@ from psycopg.rows import dict_row
 from jmos_worker import __version__
 from jmos_worker.contracts import ContractRegistry
 from jmos_worker.handlers import DEFAULT_HANDLERS
-from jmos_worker.queue import CompletionOutcome, PostgresJobQueue, WorkerRoleError
+from jmos_worker.models import ModelReply
+from jmos_worker.pipelines import build_handlers
+from jmos_worker.queue import CompletionOutcome, LeasedJob, PostgresJobQueue, WorkerRoleError
 from jmos_worker.runner import Worker
 
 pytestmark = pytest.mark.integration
@@ -228,3 +232,106 @@ def test_concurrent_workers_never_share_a_lease(admin: AdminConnection, workspac
     rows = [job_row(admin, job_id) for job_id in job_ids]
     assert all(row["status"] == "completed" for row in rows)
     assert all(row["attempts"] == 1 for row in rows), "a job was leased more than once"
+
+
+class _ScriptedModel:
+    """Stands in for the local model: always proposes one fact and one rule."""
+
+    def chat_json(self, profile: str, messages: object) -> ModelReply:
+        del profile, messages
+        answer = {
+            "proposals": [
+                {"kind": "fact", "statement": "Atende três cidades.", "confidence": 0.9},
+                {"kind": "rule", "rule_type": "MUST", "subject": "cta", "statement": "Use CTA."},
+            ]
+        }
+        return ModelReply(content=json.dumps(answer), model="stub", latency_ms=1)
+
+
+def test_meeting_extraction_writes_proposals_exactly_once(
+    admin: AdminConnection, workspace_id: UUID
+) -> None:
+    client_id, source_id, meeting_id = uuid4(), uuid4(), uuid4()
+    admin.execute(
+        "insert into public.clients (id, workspace_id, name, slug) values (%s, %s, 'IT', %s)",
+        (client_id, workspace_id, f"it-{client_id.hex[:12]}"),
+    )
+    admin.execute(
+        "insert into public.sources (id, client_id, type, title, trust_level, created_by)"
+        " select %s, %s, 'meeting', 'Reunião IT', 'FIRST_PARTY', id from public.users limit 1",
+        (source_id, client_id),
+    )
+    admin.execute(
+        "insert into public.meetings (id, client_id, title, starts_at, transcript_source_id)"
+        " values (%s, %s, 'Reunião IT', now(), %s)",
+        (meeting_id, client_id, source_id),
+    )
+    admin.execute(
+        "insert into public.meeting_transcripts (meeting_id, revision, text, origin)"
+        " values (%s, 1, 'Ana: atendemos três cidades.', 'manual')",
+        (meeting_id,),
+    )
+    row = admin.execute(
+        "select app.enqueue_job(%s, %s, 'meeting.extract', 1, %s, %s::jsonb, 100, 3, 'reasoning')",
+        (
+            workspace_id,
+            client_id,
+            f"it:{uuid4()}",
+            json.dumps({"meeting_id": str(meeting_id), "transcript_revision": 1}),
+        ),
+    ).fetchone()
+    assert row is not None
+    job_id = cast(UUID, row[0])
+
+    queue = PostgresJobQueue(
+        env("JMOS_TEST_WORKER_DATABASE_URL"), worker_id="it-meeting", version="t", lease_seconds=60
+    )
+    worker = Worker(
+        worker_id="it-meeting",
+        queue=queue,
+        handlers=build_handlers(_ScriptedModel()),
+        contracts=ContractRegistry.load_packaged(),
+        poll_interval_seconds=0.05,
+        heartbeat_interval_seconds=5,
+    )
+    try:
+        for _ in range(20):
+            if job_row(admin, job_id)["status"] in TERMINAL:
+                break
+            worker.run_once()
+        # A redelivered completion (e.g. the worker retried after a network error) is a no-op.
+        job = LeasedJob(
+            id=job_id,
+            type="meeting.extract",
+            schema_version=1,
+            workspace_id=workspace_id,
+            client_id=client_id,
+            input={},
+            attempt=1,
+            max_attempts=3,
+            lease_until=datetime.now(UTC),
+            model_profile="reasoning",
+            pipeline_version=None,
+            trace_id=None,
+        )
+        assert queue.complete(job, {"proposals": []}) is CompletionOutcome.DUPLICATE
+
+        assert job_row(admin, job_id)["status"] == "completed"
+        proposals = admin.execute(
+            "select kind::text, status::text from public.meeting_proposals"
+            " where meeting_id = %s order by kind",
+            (meeting_id,),
+        ).fetchall()
+        assert proposals == [("fact", "proposed"), ("rule", "proposed")]
+        # Model output never became knowledge or rules by itself.
+        assert admin.execute(
+            "select count(*) from public.rules where client_id = %s", (client_id,)
+        ).fetchone() == (0,)
+    finally:
+        queue.close()
+        admin.execute("delete from public.meeting_proposals where meeting_id = %s", (meeting_id,))
+        admin.execute("delete from public.meeting_transcripts where meeting_id = %s", (meeting_id,))
+        admin.execute("delete from public.meetings where id = %s", (meeting_id,))
+        admin.execute("delete from public.jobs where id = %s", (job_id,))
+        admin.execute("delete from public.sources where id = %s", (source_id,))
+        admin.execute("delete from public.clients where id = %s", (client_id,))

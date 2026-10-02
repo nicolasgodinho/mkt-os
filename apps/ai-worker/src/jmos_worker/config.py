@@ -7,6 +7,7 @@ import re
 import socket
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urlsplit
 
 # Mirrors worker.assert_worker_id in supabase/migrations (the database is the enforcement point;
@@ -18,7 +19,11 @@ LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR"})
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 # Task profile -> default local model (docs/08 §3). Overridable per profile through the environment.
-DEFAULT_MODEL_PROFILES: Mapping[str, str] = {"reasoning": "gpt-oss:20b"}
+DEFAULT_MODEL_PROFILES: Mapping[str, str] = {
+    "reasoning": "gpt-oss:20b",
+    "transcription": "large-v3",  # faster-whisper model size/name
+}
+WHISPER_DEVICES = frozenset({"auto", "cuda", "cpu"})
 
 
 class ConfigError(ValueError):
@@ -36,6 +41,9 @@ class WorkerConfig:
     ollama_url: str = DEFAULT_OLLAMA_URL
     model_profiles: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_MODEL_PROFILES))
     model_timeout_seconds: float = 120.0
+    # Recordings are read only from inside this directory (docs/13 Increment 4; ADR 0003).
+    media_root: Path | None = None
+    whisper_device: str = "auto"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> WorkerConfig:
@@ -83,6 +91,16 @@ class WorkerConfig:
                 "JMOS_MODEL_TIMEOUT_SECONDS must be shorter than JMOS_WORKER_LEASE_SECONDS"
             )
 
+        media_root_raw = env.get("JMOS_MEDIA_ROOT", "").strip()
+        media_root: Path | None = None
+        if media_root_raw:
+            media_root = Path(media_root_raw)
+            if not media_root.is_absolute() or not media_root.is_dir():
+                raise ConfigError("JMOS_MEDIA_ROOT must be an existing absolute directory")
+        whisper_device = env.get("JMOS_WHISPER_DEVICE", "auto").strip().lower() or "auto"
+        if whisper_device not in WHISPER_DEVICES:
+            raise ConfigError(f"JMOS_WHISPER_DEVICE must be one of {sorted(WHISPER_DEVICES)}")
+
         return cls(
             database_url=database_url,
             worker_id=worker_id,
@@ -93,6 +111,8 @@ class WorkerConfig:
             ollama_url=ollama_url,
             model_profiles=model_profiles,
             model_timeout_seconds=model_timeout,
+            media_root=media_root,
+            whisper_device=whisper_device,
         )
 
     @property

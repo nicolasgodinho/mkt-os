@@ -171,10 +171,16 @@ class Worker:
         else:
             try:
                 outcome = self._queue.complete(job, output)
-            except psycopg.IntegrityError:
+            except (psycopg.IntegrityError, psycopg.DataError) as error:
                 # The database refused the result (e.g. the result size limit). Retrying would
-                # produce the same result, so fail permanently instead of crash-looping.
-                logger.exception("database rejected the job result", extra=context)
+                # produce the same result, so fail permanently instead of crash-looping. Only the
+                # SQLSTATE and constraint are logged: the error detail can contain row contents.
+                logger.error(  # no traceback: it would carry the row detail
+                    "database rejected the job result (sqlstate %s, constraint %s)",
+                    error.diag.sqlstate,
+                    error.diag.constraint_name,
+                    extra=context,
+                )
                 self._record_failure(
                     job,
                     JobError(
@@ -214,6 +220,7 @@ class Worker:
             worker_id=self._worker_id,
             worker_version=__version__,
             extend_lease=lambda: self._extend_lease(job),
+            meeting_for_job=lambda: self._queue.meeting_for_job(job),
         )
 
     def _extend_lease(self, job: LeasedJob) -> bool:

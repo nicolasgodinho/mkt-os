@@ -14,6 +14,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Local transcription (docs/08 §3). Heavy (CTranslate2): installed only on the worker machine.
+transcription = [
+  "faster-whisper==1.1.1",
+]
 dev = [
   "pytest==9.1.1",
   "ruff==0.16.9",
