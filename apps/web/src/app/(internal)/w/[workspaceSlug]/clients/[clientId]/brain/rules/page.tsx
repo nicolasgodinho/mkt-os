@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Button, EmptyState, SelectField, StatusBadge, TextAreaField, TextField } from '@jmos/ui';
-import { BrainForm, type BrainFormButton } from '@/components/brain/brain-form';
+import { ActionForm, type ActionFormButton } from '@/components/action-form';
 import { proposeRule, reviewRule } from '@/lib/brain/actions';
 import { resolveBrainContext } from '@/lib/brain/context';
 import { filterRules, parseRuleFilters } from '@/lib/brain/filters';
@@ -107,7 +107,7 @@ export default async function RulesPage({
                   <p className="mt-1 text-sm">{rule.statement}</p>
                 </div>
                 {can.activateRules ? (
-                  <BrainForm
+                  <ActionForm
                     action={reviewRule}
                     hidden={{ ...scope, id: rule.id }}
                     pendingLabel="Rejeitando…"
@@ -248,7 +248,7 @@ export default async function RulesPage({
                   ? undefined
                   : ruleById.get(rule.supersedes_rule_id);
               const hintId = `trust-hint-${rule.id}`;
-              const buttons: BrainFormButton[] = [];
+              const buttons: ActionFormButton[] = [];
               if (rule.status === 'proposed') {
                 buttons.push({
                   label: 'Ativar',
@@ -309,7 +309,7 @@ export default async function RulesPage({
                   {can.activateRules ? (
                     // Stays mounted while the rule changes status, so the result stays visible.
                     <div className="mt-3 flex flex-wrap items-start gap-2">
-                      <BrainForm
+                      <ActionForm
                         action={reviewRule}
                         hidden={{ ...scope, id: rule.id }}
                         pendingLabel="Enviando…"
@@ -343,7 +343,7 @@ export default async function RulesPage({
               Registre uma fonte em Conhecimento antes: toda regra precisa de proveniência.
             </p>
           ) : (
-            <BrainForm
+            <ActionForm
               action={proposeRule}
               hidden={scope}
               buttons={[{ label: 'Propor regra' }]}
@@ -435,7 +435,7 @@ export default async function RulesPage({
                   })),
                 ]}
               />
-            </BrainForm>
+            </ActionForm>
           )}
         </section>
       ) : null}

@@ -18,8 +18,9 @@ import psycopg
 from jmos_worker import __version__
 from jmos_worker.config import ConfigError, WorkerConfig
 from jmos_worker.contracts import ContractRegistry
-from jmos_worker.handlers import DEFAULT_HANDLERS
+from jmos_worker.handlers import build_handlers
 from jmos_worker.log import configure_logging
+from jmos_worker.models import OllamaAdapter
 from jmos_worker.queue import PostgresJobQueue, WorkerRoleError
 from jmos_worker.runner import Worker
 
@@ -36,7 +37,13 @@ def build_worker(config: WorkerConfig) -> tuple[Worker, PostgresJobQueue]:
     worker = Worker(
         worker_id=config.worker_id,
         queue=queue,
-        handlers=DEFAULT_HANDLERS,
+        handlers=build_handlers(
+            OllamaAdapter(
+                config.ollama_url,
+                config.model_profiles,
+                timeout_seconds=config.model_timeout_seconds,
+            )
+        ),
         contracts=ContractRegistry.load_packaged(),
         poll_interval_seconds=config.poll_interval_seconds,
         heartbeat_interval_seconds=config.heartbeat_interval_seconds,

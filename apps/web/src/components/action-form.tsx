@@ -9,11 +9,11 @@ import {
   type ReactNode,
 } from 'react';
 import { Button, cn } from '@jmos/ui';
-import { INITIAL_BRAIN_ACTION_STATE, type BrainActionState } from '@/lib/brain/action-state';
+import { INITIAL_ACTION_STATE, type ActionState } from '@/lib/action-state';
 
-type BrainAction = (previous: BrainActionState, formData: FormData) => Promise<BrainActionState>;
+type FormAction = (previous: ActionState, formData: FormData) => Promise<ActionState>;
 
-export interface BrainFormButton {
+export interface ActionFormButton {
   label: string;
   /** Sent as `decision=<value>` when this button submits the form. */
   value?: string;
@@ -25,13 +25,13 @@ export interface BrainFormButton {
   disabled?: boolean;
 }
 
-interface BrainFormProps {
-  action: BrainAction;
+interface ActionFormProps {
+  action: FormAction;
   /** Hidden values sent with the form (scope, ids). */
   hidden: Record<string, string>;
   /** Submit buttons. Inline action forms may have none in the current state and only keep
    *  showing the result of the last action (they stay mounted while the item changes status). */
-  buttons: readonly BrainFormButton[];
+  buttons: readonly ActionFormButton[];
   pendingLabel?: string;
   /** Inline forms are compact action rows (approve, reject, archive) inside lists. */
   variant?: 'form' | 'inline';
@@ -41,7 +41,7 @@ interface BrainFormProps {
   children?: ReactNode;
 }
 
-const messageTone: Record<BrainActionState['status'], string> = {
+const messageTone: Record<ActionState['status'], string> = {
   idle: '',
   success: 'text-status-success',
   warning: 'text-status-warning',
@@ -49,11 +49,11 @@ const messageTone: Record<BrainActionState['status'], string> = {
 };
 
 /**
- * Form bound to a Client Brain server action, with pending and result feedback. Submission goes
+ * Form bound to a server action, with pending and result feedback. Submission goes
  * through `startTransition` instead of `<form action>` so React does not clear what the user
  * typed when the action returns an error; fields are reset only after a success, on request.
  */
-export function BrainForm({
+export function ActionForm({
   action,
   hidden,
   buttons,
@@ -62,8 +62,8 @@ export function BrainForm({
   resetOnSuccess = false,
   className,
   children,
-}: BrainFormProps) {
-  const [state, formAction, pending] = useActionState(action, INITIAL_BRAIN_ACTION_STATE);
+}: ActionFormProps) {
+  const [state, formAction, pending] = useActionState(action, INITIAL_ACTION_STATE);
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {

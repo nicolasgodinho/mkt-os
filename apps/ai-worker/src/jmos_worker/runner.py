@@ -61,6 +61,8 @@ class Worker:
         self._clock = clock
         self._stop = threading.Event()
         self._last_heartbeat: float | None = None
+        # Model profile of the last job that used one (docs/15 "active model profile").
+        self._active_model_profile: str | None = None
 
     @property
     def job_types(self) -> list[str]:
@@ -107,9 +109,29 @@ class Worker:
         job = self._queue.claim(self._job_types)
         if job is None:
             return False
+        if job.model_profile:
+            self._active_model_profile = job.model_profile
         self._heartbeat(WorkerStatus.BUSY, force=True)
-        self._process(job)
+        # Long handlers (model calls) block this thread: keep the liveness row fresh meanwhile so
+        # a busy worker is never shown as offline (docs/15).
+        done = threading.Event()
+        beats = threading.Thread(target=self._beat_while_busy, args=(done,), daemon=True)
+        beats.start()
+        try:
+            self._process(job)
+        finally:
+            done.set()
+            beats.join()
         return True
+
+    def _beat_while_busy(self, done: threading.Event) -> None:
+        while not done.wait(self._heartbeat_interval):
+            try:
+                self._queue.heartbeat(
+                    WorkerStatus.BUSY, self._job_types, self._active_model_profile
+                )
+            except psycopg.Error:  # a missed beat is not fatal; the main loop reports DB failures
+                logger.warning("busy heartbeat failed", extra={"worker_id": self._worker_id})
 
     def _process(self, job: LeasedJob) -> None:
         context: dict[str, object] = {
@@ -203,13 +225,13 @@ class Worker:
         now = self._clock()
         due = self._last_heartbeat is None or now - self._last_heartbeat >= self._heartbeat_interval
         if force or due:
-            self._queue.heartbeat(status, self._job_types)
+            self._queue.heartbeat(status, self._job_types, self._active_model_profile)
             self._last_heartbeat = now
 
     def _shutdown(self) -> None:
         log_context = {"worker_id": self._worker_id}
         try:
-            self._queue.heartbeat(WorkerStatus.STOPPED, self._job_types)
+            self._queue.heartbeat(WorkerStatus.STOPPED, self._job_types, self._active_model_profile)
         except psycopg.OperationalError:
             logger.warning(
                 "could not record the stopped heartbeat; the worker will appear offline once "

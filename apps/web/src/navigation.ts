@@ -38,7 +38,7 @@ export function internalNavigation(workspaceSlug: string): readonly NavItem[] {
     { href: `${base}/intelligence`, label: 'Inteligência', icon: Lightbulb, available: false },
     { href: `${base}/analytics`, label: 'Analytics', icon: ChartColumn, available: false },
     { href: `${base}/assets`, label: 'Ativos', icon: FolderOpen, available: false },
-    { href: `${base}/automations`, label: 'Automações', icon: Workflow, available: false },
+    { href: `${base}/automations`, label: 'Automações', icon: Workflow, available: true },
     { href: `${base}/settings`, label: 'Configurações', icon: Settings, available: false },
   ];
 }

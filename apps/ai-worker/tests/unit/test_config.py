@@ -24,7 +24,7 @@ def test_database_url_is_required() -> None:
         ({"JMOS_WORKER_ID": "bad id!"}, "JMOS_WORKER_ID"),
         ({"JMOS_WORKER_LEASE_SECONDS": "5"}, "between 10 and 3600"),
         ({"JMOS_WORKER_LEASE_SECONDS": "abc"}, "must be an integer"),
-        ({"JMOS_WORKER_LEASE_SECONDS": "30", "JMOS_WORKER_HEARTBEAT_SECONDS": "60"}, "shorter"),
+        ({"JMOS_WORKER_LEASE_SECONDS": "20", "JMOS_WORKER_HEARTBEAT_SECONDS": "25"}, "shorter"),
         ({"JMOS_WORKER_LOG_LEVEL": "TRACE"}, "JMOS_WORKER_LOG_LEVEL"),
     ],
 )

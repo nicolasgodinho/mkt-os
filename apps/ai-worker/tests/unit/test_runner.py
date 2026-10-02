@@ -211,3 +211,21 @@ def test_result_rejected_by_the_database_fails_permanently_instead_of_crashing()
 
     error = queue.failed[job.id]
     assert (error.code, error.retryable) == ("result_rejected", False)
+
+
+def test_a_busy_worker_keeps_heartbeating_during_a_long_job() -> None:
+    def slow(_ctx: JobContext, payload: Mapping[str, object]) -> dict[str, object]:
+        time.sleep(0.35)
+        return dict(payload)
+
+    queue = FakeQueue([make_job("test.echo.v1", {"text": "hi"})])
+    worker = Worker(
+        worker_id="unit-worker",
+        queue=queue,
+        handlers={"test.echo.v1": slow},
+        contracts=echo_registry(),
+        poll_interval_seconds=0.01,
+        heartbeat_interval_seconds=0.1,
+    )
+    worker.run_once()
+    assert queue.heartbeats.count(WorkerStatus.BUSY) >= 3

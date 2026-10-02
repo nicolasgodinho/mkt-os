@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import type { z } from 'zod';
 import { createSupabaseWriter } from '@/lib/supabase/server';
-import type { BrainActionState } from './action-state';
+import type { ActionState } from '@/lib/action-state';
 import { brainErrorMessage, isExpectedBrainError } from './errors';
 import { toBusinessTimestamp } from './model';
 import {
@@ -27,7 +27,7 @@ import {
 
 type Scope = z.infer<typeof scopeSchema>;
 
-const INVALID_FORM: BrainActionState = {
+const INVALID_FORM: ActionState = {
   status: 'error',
   message: 'Dados inválidos. Revise os campos e tente novamente.',
 };
@@ -36,7 +36,7 @@ async function callRpc(
   fn: string,
   args: Record<string, unknown>,
   scope: Scope,
-): Promise<{ ok: true; data: unknown } | { ok: false; state: BrainActionState }> {
+): Promise<{ ok: true; data: unknown } | { ok: false; state: ActionState }> {
   const supabase = await createSupabaseWriter();
   if (supabase === null) {
     return {
@@ -56,14 +56,14 @@ async function callRpc(
   return { ok: true, data: result.data };
 }
 
-function success(message: string): BrainActionState {
+function success(message: string): ActionState {
   return { status: 'success', message };
 }
 
 export async function saveBrandProfile(
-  _previous: BrainActionState,
+  _previous: ActionState,
   formData: FormData,
-): Promise<BrainActionState> {
+): Promise<ActionState> {
   const parsed = brandProfileForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
@@ -82,9 +82,9 @@ export async function saveBrandProfile(
 }
 
 export async function saveContextItem(
-  _previous: BrainActionState,
+  _previous: ActionState,
   formData: FormData,
-): Promise<BrainActionState> {
+): Promise<ActionState> {
   const parsed = contextItemForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
@@ -112,9 +112,9 @@ export async function saveContextItem(
 }
 
 export async function archiveContextItem(
-  _previous: BrainActionState,
+  _previous: ActionState,
   formData: FormData,
-): Promise<BrainActionState> {
+): Promise<ActionState> {
   const parsed = archiveContextItemForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
@@ -123,9 +123,9 @@ export async function archiveContextItem(
 }
 
 export async function createSource(
-  _previous: BrainActionState,
+  _previous: ActionState,
   formData: FormData,
-): Promise<BrainActionState> {
+): Promise<ActionState> {
   const parsed = sourceForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
@@ -144,9 +144,9 @@ export async function createSource(
 }
 
 export async function proposeKnowledge(
-  _previous: BrainActionState,
+  _previous: ActionState,
   formData: FormData,
-): Promise<BrainActionState> {
+): Promise<ActionState> {
   const parsed = knowledgeForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
@@ -183,9 +183,9 @@ export async function proposeKnowledge(
 }
 
 export async function reviewKnowledge(
-  _previous: BrainActionState,
+  _previous: ActionState,
   formData: FormData,
-): Promise<BrainActionState> {
+): Promise<ActionState> {
   const parsed = reviewKnowledgeForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
@@ -199,9 +199,9 @@ export async function reviewKnowledge(
 }
 
 export async function proposeRule(
-  _previous: BrainActionState,
+  _previous: ActionState,
   formData: FormData,
-): Promise<BrainActionState> {
+): Promise<ActionState> {
   const parsed = ruleForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
@@ -224,10 +224,7 @@ export async function proposeRule(
   return result.ok ? success('Regra proposta. Aguarda ativação.') : result.state;
 }
 
-export async function reviewRule(
-  _previous: BrainActionState,
-  formData: FormData,
-): Promise<BrainActionState> {
+export async function reviewRule(_previous: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = reviewRuleForm.safeParse(formValues(formData));
   if (!parsed.success) return INVALID_FORM;
   const form = parsed.data;
