@@ -56,7 +56,7 @@ Builder-level decisions (not frozen by tests):
 | Item | Destination |
 |---|---|
 | Automated social publishing, remote ids, metrics sync | Later (docs/13 "not in v0.1") |
-| Week view, drag and drop, inspector peek | Later UI iteration |
+| Week view; channel, initiative and status filters; drag and drop; inspector peek | Later UI iteration (docs/07 §5) |
 | Initiative milestones, recordings, seasonal events on the calendar | When those entities carry dates |
 | Workspace timezone | When workspaces carry settings |
 
