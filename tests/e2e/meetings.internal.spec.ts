@@ -69,6 +69,7 @@ test.describe('meeting intelligence', () => {
     await expect(fact.getByText('Aceito no Client Brain')).toBeVisible();
 
     await fact.getByRole('link', { name: 'Ver no Client Brain' }).click();
+    await expect(page).toHaveURL(/\/brain\/knowledge$/);
     const card = page.getByRole('listitem').filter({ hasText: edited });
     await expect(card.getByText('Proposto', { exact: true })).toBeVisible();
     // The strategist cannot approve (knowledge.approve): only proposed knowledge was created.
