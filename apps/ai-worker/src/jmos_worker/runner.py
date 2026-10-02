@@ -171,7 +171,7 @@ class Worker:
         else:
             try:
                 outcome = self._queue.complete(job, output)
-            except psycopg.IntegrityError:
+            except (psycopg.IntegrityError, psycopg.DataError):
                 # The database refused the result (e.g. the result size limit). Retrying would
                 # produce the same result, so fail permanently instead of crash-looping.
                 logger.exception("database rejected the job result", extra=context)
@@ -214,6 +214,7 @@ class Worker:
             worker_id=self._worker_id,
             worker_version=__version__,
             extend_lease=lambda: self._extend_lease(job),
+            meeting_for_job=lambda: self._queue.meeting_for_job(job),
         )
 
     def _extend_lease(self, job: LeasedJob) -> bool:
