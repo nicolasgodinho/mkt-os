@@ -43,7 +43,9 @@ select set_eq(
       where n.nspname = 'worker' and p.prosecdef $$,
   array['claim_job', 'complete_job', 'extend_lease', 'fail_job', 'heartbeat',
         -- ADR 0003: job-scoped, lease-fenced domain functions for meeting jobs.
-        'meeting_for_job', 'complete_meeting_extraction', 'complete_meeting_transcription'],
+        'meeting_for_job', 'complete_meeting_extraction', 'complete_meeting_transcription',
+        -- ADR 0004: the same pattern for Drive sync jobs.
+        'drive_sync_for_job', 'complete_drive_sync'],
   'only the worker API functions run with elevated (definer) rights'
 );
 select ok(

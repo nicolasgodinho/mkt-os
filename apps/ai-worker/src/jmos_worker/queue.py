@@ -52,10 +52,20 @@ class MeetingContext:
     transcript_revision: int | None
 
 
-# Jobs whose results are domain rows written in the completion transaction (ADR 0003).
+@dataclass(frozen=True, slots=True)
+class DriveSyncContext:
+    """The connection a Drive sync job works on, readable only under its lease (ADR 0004)."""
+
+    connection_id: UUID
+    root_folder_id: str
+    credential_ref: str
+
+
+# Jobs whose results are domain rows written in the completion transaction (ADR 0003, 0004).
 DOMAIN_COMPLETIONS: Mapping[str, str] = {
     "meeting.extract.v1": "worker.complete_meeting_extraction",
     "meeting.transcribe.v1": "worker.complete_meeting_transcription",
+    "drive.sync.v1": "worker.complete_drive_sync",
 }
 
 
@@ -109,6 +119,8 @@ class JobQueue(Protocol):
     def extend_lease(self, job: LeasedJob) -> bool: ...
 
     def meeting_for_job(self, job: LeasedJob) -> MeetingContext | None: ...
+
+    def drive_sync_for_job(self, job: LeasedJob) -> DriveSyncContext | None: ...
 
     def heartbeat(
         self,
@@ -199,6 +211,15 @@ class PostgresJobQueue:
             cur.execute(
                 "select meeting_id, title, recording_ref, transcript, transcript_revision"
                 " from worker.meeting_for_job(%s, %s, %s)",
+                (job.id, self._worker_id, job.attempt),
+            )
+            return cur.fetchone()
+
+    def drive_sync_for_job(self, job: LeasedJob) -> DriveSyncContext | None:
+        with self._connection().cursor(row_factory=class_row(DriveSyncContext)) as cur:
+            cur.execute(
+                "select connection_id, root_folder_id, credential_ref"
+                " from worker.drive_sync_for_job(%s, %s, %s)",
                 (job.id, self._worker_id, job.attempt),
             )
             return cur.fetchone()

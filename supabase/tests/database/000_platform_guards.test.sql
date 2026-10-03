@@ -113,7 +113,9 @@ select set_eq(
         and has_function_privilege('jmos_worker', p.oid, 'EXECUTE') $$,
   array['claim_job', 'complete_job', 'extend_lease', 'fail_job', 'heartbeat',
         -- ADR 0003: job-scoped, lease-fenced domain functions for meeting jobs.
-        'meeting_for_job', 'complete_meeting_extraction', 'complete_meeting_transcription'],
+        'meeting_for_job', 'complete_meeting_extraction', 'complete_meeting_transcription',
+        -- ADR 0004: the same pattern for Drive sync jobs.
+        'drive_sync_for_job', 'complete_drive_sync'],
   'jmos_worker may execute exactly the worker API'
 );
 

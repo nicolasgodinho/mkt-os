@@ -265,5 +265,6 @@ def test_a_job_without_model_profile_fails_permanently() -> None:
 def test_model_jobs_are_only_advertised_with_an_adapter() -> None:
     assert "ai.model_check.v1" not in DEFAULT_HANDLERS
     assert "ai.model_check.v1" in build_handlers(StubAdapter("{}"))
-    assert set(build_handlers(None)) == set(DEFAULT_HANDLERS)
+    # Drive sync is always advertised (it fails visibly without credentials, ADR 0004).
+    assert set(build_handlers(None)) == {*DEFAULT_HANDLERS, "drive.sync.v1"}
     assert callable(ai_model_check_v1(StubAdapter("{}")))
