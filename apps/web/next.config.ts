@@ -10,7 +10,12 @@ const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  // Production is HTTPS-only (browsers ignore HSTS over plain HTTP, e.g. the local E2E build).
+  ...(process.env.NODE_ENV === 'production'
+    ? [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' }]
+    : []),
 ];
+// The Content-Security-Policy is per request (it carries a nonce): see src/proxy.ts.
 
 // Public Supabase settings: explicit env vars win (every deployed environment sets them). Without
 // them, the local stack is discovered through the Supabase CLI (development and CI only).
