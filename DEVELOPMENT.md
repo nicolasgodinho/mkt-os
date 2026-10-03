@@ -159,6 +159,24 @@ failure and prints a summary. CI runs the same command.
 - **Contract.** `tests/acceptance/increment-6/README.md`.
 - **Seed.** Cliente Demo A has a story waiting for the client's approval.
 
+## Calendar and publication (Increment 7)
+
+- **Where.**
+  - Internal staff use `/w/<workspace>/calendar` (Calendário), with month and list views and filters for client and event type. Below the calendar, "Aprovados sem data de publicação" lists content the client approved that is not scheduled yet.
+  - Each content has a "Publicação" section in the Content Studio.
+  - Clients see "Próximos 7 dias" on `/portal/<client>` and the next 30 days at `/portal/<client>/calendar`.
+- **Typed dates.** The calendar projects four event types: publication, production deadline, approval deadline and meeting. Each date changes only through its own record's action:
+  - moving a publication date never moves the production deadline;
+  - moving the production deadline never moves a publication.
+- **Scheduling.**
+  - Only content whose latest approved revision was approved by the client can be scheduled (`publication.schedule`). The publication pins that revision.
+  - A content can have several publications. Canceling the last one returns the content to `approved`.
+  - Scheduled content cannot be edited; cancel its publications first.
+- **Publishing.** v0.1 has no social publishing. A person with `publication.publish` records the publication as published, with an optional link. This never changes the revision.
+- **Who sees what.** Clients see their publications and approval deadlines. Production deadlines and meetings stay internal.
+- **Contract.** `tests/acceptance/increment-7/README.md`.
+- **Seed.** Cliente Demo A has a client-approved post scheduled in 3 days, with a production deadline tomorrow.
+
 ## Repository layout
 
 ```text
