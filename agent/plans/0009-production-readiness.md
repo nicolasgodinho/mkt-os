@@ -49,7 +49,7 @@ v0.1 passes every test, but an agency cannot start using it:
   - create, rename and archive clients;
   - list members with role, capabilities and status;
   - change roles, revoke, invite, and revoke pending invitations;
-  - client-side member management for client admins in the portal.
+  - portal access per client (invite, list, revoke) for internal client managers.
 
 **TEST_SPEC covers:**
 - invitation creation, with capability, tenant and argument errors;
@@ -84,6 +84,7 @@ Creating cloud resources (Supabase project, hosting, domain, SMTP, Google servic
 | Item | Why |
 |---|---|
 | Generated DB types | `supabase gen types` needs Docker locally, and the CI change needs `ARCHITECTURE_CHANGE`. Zod already validates every boundary at runtime. |
+| Client admins inviting their own people in the portal | Needs a client-side management capability (docs/01 says client admins manage client-side members); v0.1 keeps access management internal |
 | Authenticated E2E locally | Needs the Supabase Auth server (Docker). CI runs them on every PR. |
 
 ## Architecture gate
