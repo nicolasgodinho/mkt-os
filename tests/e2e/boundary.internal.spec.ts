@@ -69,7 +69,9 @@ test.describe('database API boundary (Auth + PostgREST + RLS)', () => {
     expect([...(result.data as string[])].sort()).toEqual([...CAPABILITIES].sort());
   });
 
-  test('self-signup is disabled: access is invite-only', async () => {
+  // Signup is on but invite-only: the before_user_created hook refuses e-mails without a pending
+  // invitation (ADR 0005).
+  test('signup without an invitation is refused: access is invite-only', async () => {
     const config = requireSupabase();
     const response = await fetch(`${config.url}/auth/v1/signup`, {
       method: 'POST',

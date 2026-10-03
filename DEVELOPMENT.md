@@ -191,6 +191,25 @@ failure and prints a summary. CI runs the same command.
 - **Contract.** `tests/acceptance/increment-8/README.md`.
 - **Seed.** Cliente Demo A has a connected folder with two files and one removed file. No sync is queued.
 
+## Administration and invitations (Increment 9)
+
+- **Where.**
+  - `/w/<workspace>/settings` (Configurações) has two tabs:
+    - **Equipe**: members, roles and extra capabilities, revoke access, invite people, pending invitations. It needs `workspace.manage`.
+    - **Clientes**: create, rename and archive clients. It needs `client.manage`.
+  - Each client's portal access lives at `/w/<workspace>/clients/<client>/access`. It needs `client.manage`.
+- **Invitations.**
+  - Creating one shows a link `/convite/<token>` once. Send it to the person.
+  - The link expires in 7 days and works only for the invited e-mail.
+  - Inviting the same e-mail again replaces the pending invitation.
+- **Signup is invite-only** (ADR 0005). Supabase Auth runs `public.hook_before_user_created` before creating an account, and the hook refuses any e-mail without a pending invitation. The app never uses a service-role key.
+- **Accepting.**
+  - A new person creates the account on the invitation page and is taken to the workspace or the portal.
+  - Someone with an account signs in, opens the link and clicks "Aceitar convite".
+  - Acceptance requires the invited, **confirmed** e-mail. Local Supabase auto-confirms; production must keep confirmations on (see `DEPLOYMENT.md`).
+- **Links.** They use `JMOS_PUBLIC_URL` when it is set, otherwise the request's host.
+- **Contract.** `tests/acceptance/increment-9/README.md`.
+
 ## Repository layout
 
 ```text

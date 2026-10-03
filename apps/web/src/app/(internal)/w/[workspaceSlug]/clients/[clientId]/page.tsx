@@ -107,6 +107,22 @@ export default async function ClientPage({
           </Link>
         </section>
       ) : null}
+      {capabilities.includes('client.manage') ? (
+        <section aria-labelledby="client-access" className="mt-4 rounded-lg border bg-surface p-4">
+          <h2 id="client-access" className="text-sm font-medium">
+            Acesso ao portal
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pessoas do cliente que aprovam, comentam ou acompanham pelo portal.
+          </p>
+          <Link
+            href={`/w/${workspace.slug}/clients/${client.id}/access`}
+            className="mt-3 inline-flex text-sm font-medium text-primary"
+          >
+            Gerenciar acesso
+          </Link>
+        </section>
+      ) : null}
       {capabilities.includes('client.view') ? (
         <section aria-labelledby="client-drive" className="mt-4 rounded-lg border bg-surface p-4">
           <h2 id="client-drive" className="text-sm font-medium">
