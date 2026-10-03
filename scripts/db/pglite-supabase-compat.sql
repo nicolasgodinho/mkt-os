@@ -10,6 +10,8 @@
 create role anon nologin noinherit;
 create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
+-- The role Supabase Auth uses to run Auth hooks (e.g. before_user_created).
+create role supabase_auth_admin nologin noinherit;
 
 create schema auth;
 create schema extensions;
@@ -24,6 +26,7 @@ create table auth.users (
   role varchar(255),
   email varchar(255),
   encrypted_password varchar(255),
+  email_confirmed_at timestamptz,
   raw_app_meta_data jsonb,
   raw_user_meta_data jsonb,
   created_at timestamptz,
