@@ -8,8 +8,14 @@ const DRIVE_A = `/w/${SEED.workspaces.jansen}/clients/${SEED.clients.a}/drive`;
 const SEED_CONNECTION = '35000000-0000-4000-8000-000000000001';
 
 test.describe('drive', () => {
-  test.beforeEach(() => {
-    requireSupabase();
+  test.beforeEach(async () => {
+    // A failed earlier attempt may have left the seed connection paused (CI retries a test).
+    const admin = await apiAs(requireSupabase(), SEED.users.admin);
+    const resumed = await admin.rpc('set_drive_connection_status', {
+      p_connection_id: SEED_CONNECTION,
+      p_status: 'active',
+    });
+    expect(resumed.code).toBeUndefined();
   });
 
   test('an admin sees the client folder, requests a sync, re-indexes, pauses and resumes', async ({

@@ -26,6 +26,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
+from uuid import UUID
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -35,7 +36,12 @@ from jmos_worker.queue import DriveSyncContext, JobError
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 (an endpoint, not a secret)
 DRIVE_API = "https://www.googleapis.com/drive/v3/"
-ALLOWED_URL_PREFIXES = (TOKEN_URL, DRIVE_API)
+# (scheme, host, path, prefix?): checked on the parsed URL, never by string prefix alone. The
+# token endpoint is one exact path; the Drive API is a path prefix.
+ALLOWED_ENDPOINTS = (
+    ("https", "oauth2.googleapis.com", "/token", False),
+    ("https", "www.googleapis.com", "/drive/v3/", True),
+)
 SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
@@ -44,6 +50,11 @@ MAX_FOLDERS = 2000
 MAX_DEPTH = 20
 MAX_RESPONSE_BYTES = 10_000_000
 PAGE_SIZE = 1000
+# Pages a full listing can legitimately need, with headroom; more means Drive is looping.
+MAX_PAGES = MAX_FOLDERS + 4 * (MAX_FILES // PAGE_SIZE + 1)
+# Characters that are invisible or reorder text (bidi overrides, isolates): they can disguise a
+# file name's extension, so they are removed before names are stored or shown.
+UNSAFE_NAME_CHARACTERS = re.compile(r"[\x00-\x1f\x7f​-‏‪-‮⁦-⁩﻿\ud800-\udfff]")
 
 CREDENTIAL_REF = re.compile(r"^[a-z0-9_]{1,40}$")
 DRIVE_ID = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
@@ -63,8 +74,14 @@ class ServiceAccount:
         return f"ServiceAccount(client_email={self.client_email!r})"
 
 
-def load_service_account(credentials_dir: Path | None, credential_ref: str) -> ServiceAccount:
-    """Resolves a credential reference to a key file inside the credentials directory."""
+def load_service_account(
+    credentials_dir: Path | None, workspace_id: UUID, credential_ref: str
+) -> ServiceAccount:
+    """Resolves a credential reference to `<dir>/<workspace id>/<ref>.json`.
+
+    Keys are bound to the workspace of the leased job (ADR 0004): a connection in one workspace
+    can never use a key kept for another, whatever reference it names.
+    """
     if credentials_dir is None:
         raise JobError(
             "drive_credentials_missing",
@@ -75,7 +92,7 @@ def load_service_account(credentials_dir: Path | None, credential_ref: str) -> S
         raise JobError(
             "drive_credentials_invalid", "the credential reference is malformed", retryable=False
         )
-    root = credentials_dir.resolve()
+    root = (credentials_dir / str(workspace_id)).resolve()
     path = (root / f"{credential_ref}.json").resolve()
     if path.parent != root or not path.is_file():
         raise JobError(
@@ -139,7 +156,23 @@ class Transport(Protocol):
 
 
 def assert_allowed_url(url: str) -> None:
-    if not any(url.startswith(prefix) for prefix in ALLOWED_URL_PREFIXES):
+    parts = urllib.parse.urlsplit(url)
+    path = parts.path
+    allowed = (
+        parts.username is None
+        and parts.password is None
+        and parts.port is None
+        # No dot segments, raw or percent-encoded: the path must be exactly what was checked.
+        and ".." not in path
+        and "%2e" not in path.lower()
+        and any(
+            parts.scheme == scheme
+            and parts.hostname == host
+            and (path.startswith(allowed_path) if prefix else path == allowed_path)
+            for scheme, host, allowed_path, prefix in ALLOWED_ENDPOINTS
+        )
+    )
+    if not allowed:
         raise JobError("drive_url_refused", "outbound URL is not allow-listed", retryable=False)
 
 
@@ -300,6 +333,7 @@ class GoogleDriveClient:
         files: dict[str, dict[str, object]] = {}
         folders: deque[tuple[str, int]] = deque([(root_folder_id, 0)])
         visited = {root_folder_id}
+        pages = 0
         while folders:
             folder_id, depth = folders.popleft()
             page_token: str | None = None
@@ -314,6 +348,13 @@ class GoogleDriveClient:
                 }
                 if page_token is not None:
                     params["pageToken"] = page_token
+                pages += 1
+                if pages > MAX_PAGES:
+                    raise JobError(
+                        "drive_listing_too_long",
+                        "Drive kept returning pages; the listing was stopped",
+                        retryable=True,
+                    )
                 page = self._get("files", params)
                 for item in cast(list[object], page.get("files") or []):
                     if not isinstance(item, dict):
@@ -323,7 +364,14 @@ class GoogleDriveClient:
                     if not isinstance(item_id, str) or not DRIVE_ID.match(item_id):
                         continue
                     if entry.get("mimeType") == FOLDER_MIME:
-                        if depth + 1 <= MAX_DEPTH and item_id not in visited:
+                        # Skipping a deeper folder would make its files look removed: refuse.
+                        if depth + 1 > MAX_DEPTH:
+                            raise JobError(
+                                "folder_tree_too_deep",
+                                f"the folder tree is deeper than {MAX_DEPTH} levels",
+                                retryable=False,
+                            )
+                        if item_id not in visited:
                             visited.add(item_id)
                             if len(visited) > MAX_FOLDERS:
                                 raise JobError(
@@ -353,10 +401,14 @@ class GoogleDriveClient:
 
 def to_file_entry(item: Mapping[str, object]) -> dict[str, object] | None:
     """A Drive file resource as a drive.sync v1 file entry; malformed items are skipped."""
-    name = item.get("name")
-    mime = item.get("mimeType")
-    if not isinstance(name, str) or not name.strip() or not isinstance(mime, str) or not mime:
+    raw_name = item.get("name")
+    raw_mime = item.get("mimeType")
+    if not isinstance(raw_name, str) or not isinstance(raw_mime, str):
         return None
+    # Names are untrusted data: drop invisible and reordering characters. A file whose name has
+    # nothing readable left is kept, so it is never mistaken for a removed one.
+    name = UNSAFE_NAME_CHARACTERS.sub("", raw_name).strip() or "(sem nome)"
+    mime = UNSAFE_NAME_CHARACTERS.sub("", raw_mime).strip() or "application/octet-stream"
     revision = item.get("headRevisionId") or item.get("version") or item.get("modifiedTime")
     if not isinstance(revision, str) or not revision:
         return None
@@ -394,8 +446,12 @@ def default_client_factory(timeout_seconds: float) -> ClientFactory:
 def _context(context: JobContext) -> DriveSyncContext:
     sync = context.drive_sync_for_job()
     if sync is None:
+        # Paused connections are not listed (and a lost lease fences this failure anyway).
+        # Resuming the connection queues the job again.
         raise JobError(
-            "lease_lost", "the connection is not readable under this lease", retryable=True
+            "drive_connection_paused",
+            "the connection is paused or no longer leased to this worker",
+            retryable=False,
         )
     return sync
 
@@ -403,7 +459,9 @@ def _context(context: JobContext) -> DriveSyncContext:
 def drive_sync_v1(credentials_dir: Path | None, client_factory: ClientFactory) -> Handler:
     def handle(context: JobContext, _payload: Mapping[str, object]) -> dict[str, object]:
         sync = _context(context)
-        account = load_service_account(credentials_dir, sync.credential_ref)
+        account = load_service_account(
+            credentials_dir, context.job.workspace_id, sync.credential_ref
+        )
 
         def keep_lease() -> None:
             if not context.extend_lease():

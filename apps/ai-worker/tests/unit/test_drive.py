@@ -14,10 +14,13 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from jmos_worker.contracts import ContractRegistry
 from jmos_worker.drive import (
     FOLDER_MIME,
+    MAX_DEPTH,
     MAX_FILES,
+    MAX_RESPONSE_BYTES,
     TOKEN_URL,
     GoogleDriveClient,
     ServiceAccount,
+    _read_bounded,
     assert_allowed_url,
     load_service_account,
     signed_assertion,
@@ -26,7 +29,7 @@ from jmos_worker.drive import (
 from jmos_worker.pipelines import build_handlers
 from jmos_worker.queue import DriveSyncContext, JobError
 from jmos_worker.runner import Worker
-from tests.support import FakeQueue, make_job
+from tests.support import WORKSPACE_ID, FakeQueue, make_job
 
 CONNECTION = UUID("20000000-0000-4000-8000-0000000000dd")
 ROOT = "1AbCdEfGhIjKlMnOpQrStUvWxYz_root"
@@ -35,7 +38,10 @@ ACCOUNT = ServiceAccount(client_email="sync@project.iam.gserviceaccount.com", pr
 DRIVE_PREFIX = "https://www.googleapis.com/drive/v3/"
 
 
-def write_key(directory: Path, ref: str = "default", **overrides: object) -> Path:
+def write_key(
+    directory: Path, workspace_id: UUID = WORKSPACE_ID, ref: str = "default", **overrides: object
+) -> Path:
+    """Writes a key where the worker looks for it: `<dir>/<workspace id>/<ref>.json`."""
     pem = KEY.private_bytes(
         serialization.Encoding.PEM,
         serialization.PrivateFormat.PKCS8,
@@ -47,7 +53,8 @@ def write_key(directory: Path, ref: str = "default", **overrides: object) -> Pat
         "private_key": pem,
         **overrides,
     }
-    path = directory / f"{ref}.json"
+    path = directory / str(workspace_id) / f"{ref}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document), encoding="utf-8")
     return path
 
@@ -125,9 +132,19 @@ TREE: dict[str, list[dict[str, object]]] = {
 # ---------------------------------------------------------------------------
 def test_credentials_resolve_inside_the_directory(tmp_path: Path) -> None:
     write_key(tmp_path)
-    account = load_service_account(tmp_path, "default")
+    account = load_service_account(tmp_path, WORKSPACE_ID, "default")
     assert account.client_email == ACCOUNT.client_email
     assert "PRIVATE" not in repr(account)
+
+
+def test_a_key_kept_for_another_workspace_is_never_used(tmp_path: Path) -> None:
+    other_workspace = UUID("f2000000-0000-4000-8000-000000000002")
+    write_key(tmp_path, other_workspace)
+    write_key(tmp_path / "..", WORKSPACE_ID, "escape")  # outside the credentials directory
+    for ref in ("default", "escape"):
+        with pytest.raises(JobError) as caught:
+            load_service_account(tmp_path, WORKSPACE_ID, ref)
+        assert caught.value.code == "drive_credentials_missing"
 
 
 @pytest.mark.parametrize(
@@ -144,7 +161,7 @@ def test_missing_or_malformed_credentials_fail_permanently(
 ) -> None:
     write_key(tmp_path)
     with pytest.raises(JobError) as caught:
-        load_service_account(tmp_path if configured else None, ref)
+        load_service_account(tmp_path if configured else None, WORKSPACE_ID, ref)
     assert caught.value.code == code
     assert caught.value.retryable is False
 
@@ -152,7 +169,7 @@ def test_missing_or_malformed_credentials_fail_permanently(
 def test_a_key_file_that_is_not_a_service_account_is_refused(tmp_path: Path) -> None:
     write_key(tmp_path, type="authorized_user")
     with pytest.raises(JobError) as caught:
-        load_service_account(tmp_path, "default")
+        load_service_account(tmp_path, WORKSPACE_ID, "default")
     assert caught.value.code == "drive_credentials_invalid"
 
 
@@ -237,18 +254,76 @@ def test_only_google_endpoints_are_reachable() -> None:
         "https://www.googleapis.com.evil.test/drive/v3/files",
         "https://127.0.0.1/drive/v3/files",
         "https://www.googleapis.com/upload/drive/v3/files",
+        "https://www.googleapis.com:8443/drive/v3/files",
+        "https://user@www.googleapis.com/drive/v3/files",
+        "https://evil.test/https://www.googleapis.com/drive/v3/",
+        "https://oauth2.googleapis.com/tokenx/../revoke",
     ):
         with pytest.raises(JobError):
             assert_allowed_url(url)
 
 
 def test_malformed_drive_items_are_skipped() -> None:
-    assert to_file_entry({"id": "x1", "name": "  ", "mimeType": "a/b", "version": "1"}) is None
     assert to_file_entry({"id": "x1", "name": "a", "mimeType": "a/b"}) is None
     entry = to_file_entry(
         {"id": "x1", "name": "a", "mimeType": "a/b", "version": "7", "size": "-3"}
     )
     assert entry == {"drive_file_id": "x1", "name": "a", "mime_type": "a/b", "revision": "7"}
+
+
+def test_names_lose_invisible_and_reordering_characters() -> None:
+    # U+202E (right-to-left override) would display "fdp.exe" as "exe.pdf".
+    entry = to_file_entry(
+        {"id": "x1", "name": "fatura‮fdp.exe\u0000", "mimeType": "a/b", "version": "1"}
+    )
+    assert entry is not None
+    assert entry["name"] == "faturafdp.exe"
+    # A name with nothing readable left is kept: dropping it would mark the file removed.
+    blank = to_file_entry({"id": "x2", "name": " ​ ", "mimeType": "a/b", "version": "1"})
+    assert blank is not None
+    assert blank["name"] == "(sem nome)"
+
+
+def test_a_tree_deeper_than_the_limit_fails_instead_of_dropping_files() -> None:
+    tree: dict[str, list[dict[str, object]]] = {}
+    parent = ROOT
+    for level in range(MAX_DEPTH + 1):
+        child = f"folderLevel{level:03d}"
+        tree[parent] = [drive_folder(child, f"Nível {level}")]
+        parent = child
+    tree[parent] = [drive_file("fileDeep01", "Fundo.pdf")]
+    with pytest.raises(JobError) as caught:
+        GoogleDriveClient(ACCOUNT, FakeDrive(tree)).snapshot(ROOT, lambda: None)
+    assert (caught.value.code, caught.value.retryable) == ("folder_tree_too_deep", False)
+
+
+def test_a_looping_listing_is_stopped() -> None:
+    class LoopingDrive(FakeDrive):
+        def request(
+            self, method: str, url: str, *, headers: Mapping[str, str], body: bytes | None
+        ) -> tuple[int, bytes]:
+            if "/files?" in url:
+                # The same page token forever, with nothing new on any page.
+                return 200, json.dumps({"files": [], "nextPageToken": "again"}).encode()
+            return super().request(method, url, headers=headers, body=body)
+
+    with pytest.raises(JobError) as caught:
+        GoogleDriveClient(ACCOUNT, LoopingDrive(TREE)).snapshot(ROOT, lambda: None)
+    assert caught.value.code == "drive_listing_too_long"
+
+
+def test_oversized_responses_are_refused() -> None:
+    class Body:
+        def __init__(self, size: int) -> None:
+            self.size = size
+
+        def read(self, limit: int) -> bytes:
+            return b"x" * min(self.size, limit)
+
+    assert _read_bounded(Body(10)) == b"x" * 10
+    with pytest.raises(JobError) as caught:
+        _read_bounded(Body(MAX_RESPONSE_BYTES + 5))
+    assert caught.value.code == "drive_response_too_large"
 
 
 # ---------------------------------------------------------------------------
@@ -286,12 +361,12 @@ def test_the_sync_job_returns_the_snapshot(tmp_path: Path) -> None:
     assert len(files) == 3
 
 
-def test_a_sync_without_its_lease_reads_nothing(tmp_path: Path) -> None:
+def test_a_paused_or_unleased_sync_reads_nothing(tmp_path: Path) -> None:
     write_key(tmp_path)
     drive = FakeDrive(TREE)
     queue = run_sync(tmp_path, None, drive)
     (error,) = queue.failed.values()
-    assert error.code == "lease_lost"
+    assert (error.code, error.retryable) == ("drive_connection_paused", False)
     assert drive.calls == []
 
 

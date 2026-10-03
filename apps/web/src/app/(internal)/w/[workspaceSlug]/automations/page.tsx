@@ -206,7 +206,8 @@ export default async function AutomationsPage({
                   variant: 'secondary',
                 });
               }
-              if (RETRYABLE.includes(job.status)) {
+              // Drive syncs are retried from the client's Drive page (one open sync per folder).
+              if (RETRYABLE.includes(job.status) && job.type !== 'drive.sync') {
                 buttons.push({
                   label: 'Tentar de novo',
                   value: 'retry',

@@ -3,10 +3,9 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { driveErrorMessage } from './errors';
 
-const MIGRATION = path.resolve(
-  import.meta.dirname,
-  '../../../../../supabase/migrations/20261002220000_drive_sync.sql',
-);
+const MIGRATIONS = path.resolve(import.meta.dirname, '../../../../../supabase/migrations');
+const MIGRATION = path.join(MIGRATIONS, '20261002220000_drive_sync.sql');
+const JOB_CENTER_MIGRATION = path.join(MIGRATIONS, '20261002120000_job_center.sql');
 const GENERIC_INVALID = 'Esta ação não vale para o estado atual. Atualize a página.';
 
 describe('driveErrorMessage', () => {
@@ -17,9 +16,14 @@ describe('driveErrorMessage', () => {
   });
 
   it('has a specific message for every literal 22023 error raised by the migration', () => {
-    const sql = readFileSync(MIGRATION, 'utf8');
     const pattern = /raise exception '([^'%]+)'\s+using errcode = '22023'/g;
-    const messages = [...sql.matchAll(pattern)].map((match) => match[1] ?? '');
+    const raised = (file: string) =>
+      [...readFileSync(file, 'utf8').matchAll(pattern)].map((match) => match[1] ?? '');
+    // The migration re-creates the job center's retry_job: its Increment 3 messages belong to
+    // the job center, not to this map.
+    const jobCenter = new Set(raised(JOB_CENTER_MIGRATION));
+    const messages = raised(MIGRATION).filter((message) => !jobCenter.has(message));
+    expect(messages).toContain('drive syncs are retried from the drive page');
     expect(messages.length).toBeGreaterThan(6);
     for (const message of messages) {
       expect(driveErrorMessage({ code: '22023', message }), message).not.toBe(GENERIC_INVALID);

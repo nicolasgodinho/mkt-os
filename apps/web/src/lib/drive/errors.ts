@@ -14,6 +14,14 @@ const KNOWN = new Map<string, string>([
   ['this drive connection is paused', 'A conexão está pausada: retome-a para sincronizar.'],
   ['removed files cannot be indexed', 'Arquivos removidos do Drive não podem ser indexados.'],
   ['invalid drive sync result', 'O resultado da sincronização foi recusado.'],
+  [
+    'this folder is already connected to a client',
+    'Esta pasta já está conectada a outro cliente: cada pasta alimenta um único cliente.',
+  ],
+  [
+    'drive syncs are retried from the drive page',
+    'Sincronizações do Drive são refeitas pela página Drive do cliente.',
+  ],
 ]);
 
 export function driveErrorMessage(error: {

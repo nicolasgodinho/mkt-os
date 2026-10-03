@@ -367,7 +367,7 @@ def test_drive_sync_applies_the_snapshot_once_and_schedules_the_next(
     ).fetchone()
     assert row is not None
     job_id = cast(UUID, row[0])
-    write_key(tmp_path)
+    write_key(tmp_path, workspace_id)
 
     queue = PostgresJobQueue(
         env("JMOS_TEST_WORKER_DATABASE_URL"), worker_id="it-drive", version="t", lease_seconds=60

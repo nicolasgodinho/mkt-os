@@ -180,13 +180,13 @@ failure and prints a summary. CI runs the same command.
 ## Drive sync (Increment 8)
 
 - **Where.** `/w/<workspace>/clients/<client>/drive` shows the connection, its sync state and the file registry. It is internal only.
-- **Connecting.** It requires `integration.manage`. Paste the folder link or id, a credential reference (default `default`) and an interval of 15 to 1440 minutes. Connecting queues the first sync.
+- **Connecting.** It requires `integration.manage`. Paste the folder link or id, a credential reference (default `default`) and an interval of 15 to 1440 minutes. Connecting queues the first sync. A folder can be connected to only one client.
 - **How a sync runs.** The AI Worker runs it as a `drive.sync` job (ADR 0004).
   - It lists the folder tree and returns metadata only. The database applies the snapshot exactly once.
   - New or changed files become "Aguardando indexação". Files missing from the snapshot become "Removido do Drive".
   - The next sync is queued after the interval.
 - **Failure states.** A failed sync keeps its error code on the job. The Drive page explains it, and the job center shows it. "Sincronizar agora" retries it.
-- **Credentials.** See `apps/ai-worker/README.md` ("Drive sync"). Without `JMOS_DRIVE_CREDENTIALS_DIR`, syncs fail with `drive_credentials_missing`. That is expected in local development.
+- **Credentials.** See `apps/ai-worker/README.md` ("Drive sync"). Keys live at `$JMOS_DRIVE_CREDENTIALS_DIR/<workspace id>/<ref>.json`. Without them, syncs fail with `drive_credentials_missing`. That is expected in local development.
 - **Re-index.** "Indexar de novo" puts a file back to "Aguardando indexação". Indexing itself arrives with the RAG increment.
 - **Contract.** `tests/acceptance/increment-8/README.md`.
 - **Seed.** Cliente Demo A has a connected folder with two files and one removed file. No sync is queued.

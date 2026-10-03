@@ -55,7 +55,7 @@ stack. In staging and production, an operator sets the role's password through s
 | `JMOS_OLLAMA_URL` | `http://127.0.0.1:11434` | Local model runtime. **Loopback addresses only**: never expose Ollama to the network |
 | `JMOS_MODEL_REASONING` | `gpt-oss:20b` | Model behind the `reasoning` task profile (docs/08 §3) |
 | `JMOS_MODEL_TIMEOUT_SECONDS` | `120` | Per-request model timeout (must be shorter than the lease) |
-| `JMOS_DRIVE_CREDENTIALS_DIR` | (unset) | Absolute directory with Google service-account key files named `<credential_ref>.json` (Drive sync). Keep it outside the repository |
+| `JMOS_DRIVE_CREDENTIALS_DIR` | (unset) | Absolute directory with Google service-account keys at `<workspace id>/<credential_ref>.json` (Drive sync). Keep it outside the repository |
 
 ## Models (Increment 3)
 
@@ -84,7 +84,9 @@ database applies it in the completion transaction (ADR 0004). File contents are 
 
 - **Credentials.**
   - Each connection names a *credential reference*, for example `default`. The worker loads
-    `$JMOS_DRIVE_CREDENTIALS_DIR/<ref>.json`, a Google service-account key.
+    `$JMOS_DRIVE_CREDENTIALS_DIR/<workspace id>/<ref>.json`, a Google service-account key.
+  - Keys are bound to the workspace of the leased job. A connection in one workspace can never
+    use a key kept for another, whatever reference it names.
   - Share each client folder with that service account as **Viewer**.
   - Keys and tokens never reach the database, jobs, logs or results.
 - **Egress.** Requests go only to `https://oauth2.googleapis.com/token` and `https://www.googleapis.com/drive/v3/`. They use the read-only scope, follow no redirects, use no proxies, and have bounded response sizes.
@@ -92,13 +94,18 @@ database applies it in the completion transaction (ADR 0004). File contents are 
 - **Errors.**
   | Situation | Code |
   |---|---|
-  | No credentials directory, or no key file for the reference | `drive_credentials_missing` (permanent) |
+  | No credentials directory, or no key file for this workspace and reference | `drive_credentials_missing` (permanent) |
   | Unreadable key, or not a service account | `drive_credentials_invalid` (permanent) |
   | Google rejects the key | `drive_auth_failed` (permanent) |
   | Folder not shared with the account | `drive_access_denied` (permanent) |
   | Folder missing, or the id is not a folder | `drive_folder_not_found` or `drive_folder_invalid` (permanent) |
   | Rate limit, HTTP 5xx, network | `drive_rate_limited` or `drive_unavailable` (retryable) |
   | More than 5000 files or 2000 folders | `too_many_files` or `too_many_folders` (permanent) |
+- **Listing guards.**
+  - A tree deeper than 20 levels fails with `folder_tree_too_deep` instead of dropping files, which would make them look removed.
+  - A listing that keeps paging fails with `drive_listing_too_long`.
+  - Invisible and text-reordering characters are removed from file names.
+- **Paused connections.** A paused connection is never listed to the worker. A sync that was already running fails with `drive_connection_paused`, and resuming queues it again.
 - **Without credentials.** The handler is always advertised. Without credentials, a sync fails visibly with `drive_credentials_missing` instead of waiting in the queue.
 
 Exit codes: `2` configuration error, `3` role too privileged, `4` database unreachable at startup.

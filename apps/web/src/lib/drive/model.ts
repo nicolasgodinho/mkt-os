@@ -100,7 +100,7 @@ export function syncState(
 const FAILURES = new Map<string, string>([
   [
     'drive_credentials_missing',
-    'O worker não tem a credencial desta conexão (JMOS_DRIVE_CREDENTIALS_DIR).',
+    'O worker não tem a credencial desta conexão para este workspace (JMOS_DRIVE_CREDENTIALS_DIR/<workspace>/<referência>.json).',
   ],
   ['drive_credentials_invalid', 'A credencial configurada no worker é inválida.'],
   ['drive_auth_failed', 'O Google recusou a credencial.'],
@@ -111,6 +111,15 @@ const FAILURES = new Map<string, string>([
   ['drive_unavailable', 'O Drive não respondeu; uma nova tentativa foi agendada.'],
   ['too_many_files', 'A pasta tem mais de 5000 arquivos: divida-a em pastas menores.'],
   ['too_many_folders', 'A pasta tem subpastas demais.'],
+  ['folder_tree_too_deep', 'A pasta tem subpastas aninhadas em níveis demais (máximo 20).'],
+  ['drive_listing_too_long', 'O Drive não terminou a listagem; uma nova tentativa foi agendada.'],
+  ['drive_connection_paused', 'A conexão foi pausada durante a sincronização.'],
+  ['drive_response_too_large', 'O Drive respondeu com dados grandes demais.'],
+  ['drive_unexpected', 'O Drive respondeu de forma inesperada.'],
+  ['drive_url_refused', 'O worker recusou um endereço fora da lista permitida.'],
+  ['result_rejected', 'O resultado da sincronização foi recusado pelo banco de dados.'],
+  ['lease_expired', 'O worker perdeu o prazo da tarefa; ela será retomada.'],
+  ['unhandled_exception', 'Erro inesperado no worker: veja os logs do worker.'],
 ]);
 
 export function failureMessage(code: string | null): string {
