@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import './globals.css';
 
@@ -12,7 +13,10 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Reading the request headers renders every page per request, which the nonce-based CSP needs
+  // (a prerendered page would carry scripts without this request's nonce; see src/proxy.ts).
+  await headers();
   return (
     <html lang="pt-BR">
       <body>{children}</body>
