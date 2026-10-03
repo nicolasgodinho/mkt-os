@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from jmos_worker.contracts import ContractRegistry, packaged_documents
 from jmos_worker.queue import (
     CompletionOutcome,
+    DriveSyncContext,
     FailureOutcome,
     JobError,
     LeasedJob,
@@ -71,6 +72,7 @@ class FakeQueue:
         self.on_heartbeat: Callable[[WorkerStatus], None] | None = None
         self.complete_error: Exception | None = None
         self.meetings: dict[UUID, MeetingContext] = {}
+        self.drive_syncs: dict[UUID, DriveSyncContext] = {}
 
     def claim(self, job_types: Sequence[str]) -> LeasedJob | None:
         self.claimed_with.append(list(job_types))
@@ -109,6 +111,9 @@ class FakeQueue:
 
     def meeting_for_job(self, job: LeasedJob) -> MeetingContext | None:
         return self.meetings.get(job.id)
+
+    def drive_sync_for_job(self, job: LeasedJob) -> DriveSyncContext | None:
+        return self.drive_syncs.get(job.id)
 
     def close(self) -> None:
         self.closed = True

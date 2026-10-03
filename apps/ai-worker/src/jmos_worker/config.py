@@ -44,6 +44,8 @@ class WorkerConfig:
     # Recordings are read only from inside this directory (docs/13 Increment 4; ADR 0003).
     media_root: Path | None = None
     whisper_device: str = "auto"
+    # Service-account key files named `<credential_ref>.json` (ADR 0004); outside the repository.
+    drive_credentials_dir: Path | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> WorkerConfig:
@@ -101,6 +103,15 @@ class WorkerConfig:
         if whisper_device not in WHISPER_DEVICES:
             raise ConfigError(f"JMOS_WHISPER_DEVICE must be one of {sorted(WHISPER_DEVICES)}")
 
+        drive_dir_raw = env.get("JMOS_DRIVE_CREDENTIALS_DIR", "").strip()
+        drive_credentials_dir: Path | None = None
+        if drive_dir_raw:
+            drive_credentials_dir = Path(drive_dir_raw)
+            if not drive_credentials_dir.is_absolute() or not drive_credentials_dir.is_dir():
+                raise ConfigError(
+                    "JMOS_DRIVE_CREDENTIALS_DIR must be an existing absolute directory"
+                )
+
         return cls(
             database_url=database_url,
             worker_id=worker_id,
@@ -113,6 +124,7 @@ class WorkerConfig:
             model_timeout_seconds=model_timeout,
             media_root=media_root,
             whisper_device=whisper_device,
+            drive_credentials_dir=drive_credentials_dir,
         )
 
     @property

@@ -53,6 +53,7 @@ def build_worker(config: WorkerConfig) -> tuple[Worker, PostgresJobQueue]:
                 else None
             ),
             media_root=config.media_root,
+            drive_credentials_dir=config.drive_credentials_dir,
         ),
         contracts=ContractRegistry.load_packaged(),
         poll_interval_seconds=config.poll_interval_seconds,

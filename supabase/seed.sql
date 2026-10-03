@@ -336,5 +336,29 @@ insert into public.publications (id, client_id, content_id, revision_id, channel
    date_trunc('day', now()) + interval '3 days 13 hours', 'scheduled',
    '00000000-0000-4000-8000-000000000002');
 
+-- Drive (Increment 8): Cliente Demo A has a connected folder with files from a past sync. No sync
+-- job is queued, so a local worker without Drive credentials stays quiet until someone asks.
+insert into public.integration_connections (id, workspace_id, client_id, provider, root_folder_id,
+                                            credential_ref, last_success_at, created_by) values
+  ('35000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', 'google_drive', '1DemoClienteAPastaDrive0001',
+   'default', now() - interval '2 hours', '00000000-0000-4000-8000-000000000001');
+insert into public.file_records (id, workspace_id, client_id, connection_id, drive_file_id, name,
+                                 mime_type, drive_revision, modified_at, size_bytes) values
+  ('35000000-0000-4000-8000-000000000011', '10000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '35000000-0000-4000-8000-000000000001',
+   '1DemoBriefingDoc0001', 'Briefing Cliente A.docx',
+   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'rev-1',
+   now() - interval '3 days', 48213),
+  ('35000000-0000-4000-8000-000000000012', '10000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '35000000-0000-4000-8000-000000000001',
+   '1DemoLogoPng0002', 'Logo Cliente A.png', 'image/png', 'rev-3', now() - interval '10 days',
+   183044);
+insert into public.file_records (id, workspace_id, client_id, connection_id, drive_file_id, name,
+                                 mime_type, drive_revision, sync_status, index_status) values
+  ('35000000-0000-4000-8000-000000000013', '10000000-0000-4000-8000-000000000001',
+   '20000000-0000-4000-8000-00000000000a', '35000000-0000-4000-8000-000000000001',
+   '1DemoOldPdf0003', 'Tabela antiga.pdf', 'application/pdf', 'rev-1', 'removed', 'skipped');
+
 -- Local AI Worker login (see apps/ai-worker/README.md). Production sets its own secret password.
 alter role jmos_worker with login password 'jmos-worker-local-dev-only';
