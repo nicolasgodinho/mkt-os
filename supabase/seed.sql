@@ -301,5 +301,40 @@ insert into public.approval_requests (id, client_id, content_id, revision_id, re
    '33000000-0000-4000-8000-000000000011', '33000000-0000-4000-8000-000000000021',
    '00000000-0000-4000-8000-000000000002');
 
+-- Calendar (Increment 7): Cliente Demo A has a client-approved post scheduled in 3 days.
+insert into public.contents (id, client_id, pauta_id, channel, format, title, status, owner_id,
+                             working_payload, production_due_at) values
+  ('34000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-00000000000a',
+   '32000000-0000-4000-8000-000000000001', 'instagram', 'post', 'Post: dicas de escovação',
+   'scheduled', '00000000-0000-4000-8000-000000000002',
+   '{"headline": "Escove direito", "body": "Dois minutos, duas vezes ao dia.", "cta": "Agende pelo WhatsApp"}',
+   date_trunc('day', now()) + interval '1 day 18 hours');
+insert into public.content_revisions (id, content_id, client_id, revision_number, payload,
+                                      immutable_hash, created_by)
+select '34000000-0000-4000-8000-000000000021', '34000000-0000-4000-8000-000000000011',
+       '20000000-0000-4000-8000-00000000000a', 1, c.working_payload,
+       encode(sha256(convert_to(c.working_payload::text, 'UTF8')), 'hex'),
+       '00000000-0000-4000-8000-000000000002'
+  from public.contents c where c.id = '34000000-0000-4000-8000-000000000011';
+update public.contents
+   set current_revision_id = '34000000-0000-4000-8000-000000000021',
+       approved_revision_id = '34000000-0000-4000-8000-000000000021',
+       client_approved_revision_id = '34000000-0000-4000-8000-000000000021'
+ where id = '34000000-0000-4000-8000-000000000011';
+insert into public.approval_requests (id, client_id, content_id, revision_id, status, requested_by,
+                                      decided_at) values
+  ('34000000-0000-4000-8000-000000000031', '20000000-0000-4000-8000-00000000000a',
+   '34000000-0000-4000-8000-000000000011', '34000000-0000-4000-8000-000000000021', 'approved',
+   '00000000-0000-4000-8000-000000000002', now());
+insert into public.approval_decisions (approval_request_id, client_id, approver_user_id, decision) values
+  ('34000000-0000-4000-8000-000000000031', '20000000-0000-4000-8000-00000000000a',
+   '00000000-0000-4000-8000-000000000004', 'approve');
+insert into public.publications (id, client_id, content_id, revision_id, channel, scheduled_at,
+                                 status, created_by) values
+  ('34000000-0000-4000-8000-000000000041', '20000000-0000-4000-8000-00000000000a',
+   '34000000-0000-4000-8000-000000000011', '34000000-0000-4000-8000-000000000021', 'instagram',
+   date_trunc('day', now()) + interval '3 days 13 hours', 'scheduled',
+   '00000000-0000-4000-8000-000000000002');
+
 -- Local AI Worker login (see apps/ai-worker/README.md). Production sets its own secret password.
 alter role jmos_worker with login password 'jmos-worker-local-dev-only';
