@@ -23,4 +23,36 @@ test.describe('internal surface without a session', () => {
     expect(response.headers()['x-content-type-options']).toBe('nosniff');
     expect(response.headers()['x-powered-by']).toBeUndefined();
   });
+
+  test('pages carry a nonce-based CSP that the app runs under without violations', async ({
+    page,
+  }) => {
+    const violations: string[] = [];
+    page.on('console', (message) => {
+      if (/Content Security Policy|Content-Security-Policy/i.test(message.text())) {
+        violations.push(message.text());
+      }
+    });
+    const first = await page.goto('/login');
+    const policy = first?.headers()['content-security-policy'] ?? '';
+    expect(policy).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
+    expect(policy).toContain("frame-ancestors 'none'");
+    expect(policy).toContain("object-src 'none'");
+    expect(policy).not.toContain('unsafe-eval');
+
+    // A new nonce per request.
+    const second = await page.request.get('/login');
+    expect(second.headers()['content-security-policy']).not.toBe(policy);
+
+    // Every script carries this response's nonce, the Next.js client boots, nothing is blocked.
+    const nonce = /'nonce-([A-Za-z0-9+/=]+)'/.exec(policy)?.[1];
+    const scriptNonces = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('script'), (script) => script.nonce),
+    );
+    expect(scriptNonces.length).toBeGreaterThan(0);
+    expect(new Set(scriptNonces)).toEqual(new Set([nonce]));
+    await page.waitForFunction(() => 'next' in window);
+    await page.waitForLoadState('networkidle');
+    expect(violations).toEqual([]);
+  });
 });

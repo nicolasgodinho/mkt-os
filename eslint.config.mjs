@@ -1,6 +1,7 @@
 // @ts-check
 import js from '@eslint/js';
 import nextPlugin from '@next/eslint-plugin-next';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import globals from 'globals';
@@ -44,13 +45,15 @@ export default defineConfig([
 
   {
     files: ['apps/web/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}'],
-    plugins: { '@next/next': nextPlugin, 'react-hooks': reactHooks },
+    plugins: { '@next/next': nextPlugin, 'react-hooks': reactHooks, 'jsx-a11y': jsxA11y },
     settings: { next: { rootDir: 'apps/web/' } },
     languageOptions: { globals: { ...globals.browser } },
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
       ...reactHooks.configs.recommended.rules,
+      // Accessibility (docs/07: keyboard and screen-reader use, mobile portal).
+      ...jsxA11y.flatConfigs.recommended.rules,
     },
   },
 
