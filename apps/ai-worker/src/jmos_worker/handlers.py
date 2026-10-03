@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from jmos_worker.models import ModelAdapter, build_messages
-from jmos_worker.queue import JobError, LeasedJob, MeetingContext
+from jmos_worker.queue import DriveSyncContext, JobError, LeasedJob, MeetingContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +27,8 @@ class JobContext:
     extend_lease: Callable[[], bool]
     # Meeting content through the lease (ADR 0003); None when the lease is no longer held.
     meeting_for_job: Callable[[], MeetingContext | None] = lambda: None
+    # The Drive connection through the lease (ADR 0004); None when the lease is no longer held.
+    drive_sync_for_job: Callable[[], DriveSyncContext | None] = lambda: None
 
 
 Handler = Callable[[JobContext, Mapping[str, object]], dict[str, object]]

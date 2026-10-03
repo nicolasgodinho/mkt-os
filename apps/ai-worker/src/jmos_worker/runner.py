@@ -221,6 +221,7 @@ class Worker:
             worker_version=__version__,
             extend_lease=lambda: self._extend_lease(job),
             meeting_for_job=lambda: self._queue.meeting_for_job(job),
+            drive_sync_for_job=lambda: self._queue.drive_sync_for_job(job),
         )
 
     def _extend_lease(self, job: LeasedJob) -> bool:
