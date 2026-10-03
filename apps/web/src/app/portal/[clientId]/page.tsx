@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { EmptyState, PageHeader, StatusBadge } from '@jmos/ui';
+import { PortalEvent } from '@/components/calendar/portal-event';
+import { upcomingRange } from '@/lib/calendar/model';
+import { calendarEvents } from '@/lib/calendar/queries';
 import { needsAttention } from '@/lib/collab/model';
 import { portalApprovals } from '@/lib/collab/queries';
 import { portalAreasFor } from '@/lib/identity/capabilities';
@@ -34,6 +37,9 @@ export default async function PortalClientPage({
   const areas = portalAreasFor(capabilities);
   const canDecide = capabilities.includes('approval.decide');
   const pending = canDecide ? needsAttention(await portalApprovals(client.id)) : [];
+  const canView = capabilities.includes('client.view');
+  const nextDays = upcomingRange(7);
+  const nextWeek = canView ? await calendarEvents(nextDays.from, nextDays.to, client.id) : [];
   const base = `/portal/${client.id}`;
 
   return (
@@ -71,6 +77,23 @@ export default async function PortalClientPage({
         </section>
       ) : null}
 
+      {canView ? (
+        <section aria-labelledby="next-days" className="mb-6">
+          <h2 id="next-days" className="mb-2 text-sm font-medium">
+            Próximos 7 dias
+          </h2>
+          {nextWeek.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nada agendado para os próximos dias.</p>
+          ) : (
+            <ul className="flex flex-col gap-2" aria-label="Próximos 7 dias">
+              {nextWeek.map((event) => (
+                <PortalEvent key={`${event.event_type}-${event.entity_id}`} event={event} />
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
       <section aria-labelledby="areas">
         <h2 id="areas" className="mb-2 text-sm font-medium">
           Áreas disponíveis para você
@@ -81,17 +104,20 @@ export default async function PortalClientPage({
           <ul className="flex flex-col gap-2" data-testid="portal-areas">
             {areas.map((area) => (
               <li key={area.key} className="rounded-lg border bg-surface px-4 py-3">
-                {area.key === 'approvals' ? (
-                  <Link href={`${base}/approvals`} className="font-medium text-primary">
+                {area.key === 'requests' ? (
+                  <p className="font-medium">{area.label}</p>
+                ) : (
+                  <Link
+                    href={area.key === 'approvals' ? `${base}/approvals` : `${base}/calendar`}
+                    className="font-medium text-primary"
+                  >
                     {area.label}
                   </Link>
-                ) : (
-                  <p className="font-medium">{area.label}</p>
                 )}
                 <p className="text-sm text-muted-foreground">{area.description}</p>
-                {area.key === 'approvals' ? null : (
+                {area.key === 'requests' ? (
                   <p className="mt-1 text-xs text-muted-foreground">Disponível em breve</p>
-                )}
+                ) : null}
               </li>
             ))}
           </ul>

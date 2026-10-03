@@ -34,7 +34,7 @@ async function reader() {
 const PAUTA_COLUMNS =
   'id, title, status, initiative_id, opportunity_id, objective, audience_ids, pillar, angle, message, cta, offer_id, source_ids, mandatories, constraints, created_at';
 const CONTENT_COLUMNS =
-  'id, pauta_id, channel, format, title, status, working_payload, current_revision_id, approved_revision_id, updated_at';
+  'id, pauta_id, channel, format, title, status, working_payload, current_revision_id, approved_revision_id, client_approved_revision_id, production_due_at, updated_at';
 
 export async function listInitiatives(clientId: string): Promise<Initiative[]> {
   const supabase = await reader();
