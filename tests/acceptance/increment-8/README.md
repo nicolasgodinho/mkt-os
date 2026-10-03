@@ -17,7 +17,9 @@ They were taken autonomously under Nicolas's standing instruction of 2026-10-02 
 
 1. **Connection.** Each client has at most one Google Drive connection, created with `integration.manage`. It names:
    - a folder id in Drive's id format;
-   - a **credential reference**: a short name (`^[a-z0-9_]{1,40}$`) that the worker resolves from its own environment. The secret itself never enters the database or a job.
+   - a **credential reference**: a short name (`^[a-z0-9_]{1,40}$`) that the worker resolves from its own environment, inside the directory of the job's workspace (ADR 0004). The secret itself never enters the database or a job.
+
+   A folder can be connected to only one client.
    - a sync interval between 15 and 1440 minutes (default 60).
 
    Connecting queues the first sync right away.
@@ -56,7 +58,7 @@ The public functions are executable by `authenticated` only. Errors follow the s
 | `request_drive_sync(p_connection_id) → uuid` | Decision 2. Refused while the connection is paused. |
 | `request_file_reindex(p_file_id)` | Decision 5. |
 
-**22023 messages:** `invalid drive folder id`, `invalid credential reference`, `invalid sync interval`, `this client already has a drive connection`, `unknown connection status`, `this drive connection is paused`, `removed files cannot be indexed`, `invalid drive sync result`.
+**22023 messages:** `invalid drive folder id`, `invalid credential reference`, `invalid sync interval`, `this client already has a drive connection`, `unknown connection status`, `this drive connection is paused`, `removed files cannot be indexed`, `invalid drive sync result`. The builder may add messages for rules these tests do not cover, for example one folder per client.
 
 **Job contract (`830_drive_contracts.test.ts`):**
 - `drive.sync` v1 input: `{connection_id}` (strict).

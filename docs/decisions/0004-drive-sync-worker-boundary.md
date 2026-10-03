@@ -38,7 +38,10 @@ Two questions were open:
 
    The protected guards list the worker API exactly. With these two functions it now has the five original functions, the three from ADR 0003, and these two.
 3. **Credentials are references.**
-   - `credential_ref` is a short name, for example `default`. The worker resolves it to a Google service-account key file under `JMOS_DRIVE_CREDENTIALS_DIR` (`<ref>.json`), which lives outside the repository.
+   - `credential_ref` is a short name, for example `default`. The worker resolves it to a Google service-account key file at `JMOS_DRIVE_CREDENTIALS_DIR/<workspace id>/<ref>.json`, outside the repository.
+   - **Keys are bound to a workspace.** The workspace comes from the leased job, never from the connection, so no workspace can use a key kept for another, whatever reference it names.
+   - **A folder feeds exactly one client.** A folder id cannot be connected twice, so no connection can mirror another client's folder into its own registry.
+   - **Residual risk.** Inside a workspace, anyone with `integration.manage` can connect any folder that the workspace's service account can read. That capability is already workspace-wide (Increment 1, D1), and the agency decides what it shares with the account.
    - Keys, tokens and file contents never enter the database, jobs, logs or results.
    - The scope is read-only (`drive.readonly`), and the service account sees only the folders shared with it.
 4. **Outbound access is allow-listed in the adapter.**
