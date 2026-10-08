@@ -1,4 +1,4 @@
-# Jansen Marketing OS — Specification v1.0
+# Marketing OS — Specification v1.0
 
 **Status:** FROZEN FOR BUILD  
 **Date:** 2026-09-30  
