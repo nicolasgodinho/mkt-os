@@ -3,7 +3,7 @@
 -- Contract and fixture: tests/acceptance/increment-9/README.md
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(17);
+select plan(20);
 
 create function pg_temp.login_as(p_user uuid) returns void language plpgsql as $$
 begin
@@ -156,6 +156,31 @@ select set_eq(
        (current_setting('acc.inv1')::uuid, current_setting('acc.inv2')::uuid) $$,
   array['invitation.created', 'invitation.revoked'],
   'invitations are audited');
+
+-- Additional constraints ---------------------------------------------------------------
+reset role;
+update public.clients set status = 'archived' where id = 'a2000000-0000-4000-8000-0000000000a2';
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select throws_ok($$ select * from public.invite_client_member('a2000000-0000-4000-8000-0000000000a2', 'xyz@cliente.test', 'viewer') $$,
+  '22023', 'this client is archived', 'cannot invite to an archived client');
+
+-- A pending invitation of someone who then becomes a member is revoked with the membership.
+select set_config('acc.inv_rev', (select invitation_id::text from public.invite_workspace_member(
+  'a0000000-0000-4000-8000-00000000aaaa', 'outra@agencia.test', 'creative')), true);
+reset role;
+insert into public.workspace_memberships (workspace_id, user_id, role, capabilities, status)
+  values ('a0000000-0000-4000-8000-00000000aaaa', 'd0000000-0000-4000-8000-000000000004', 'creative', '{}', 'active');
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select public.revoke_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'd0000000-0000-4000-8000-000000000004');
+reset role;
+select is((select status::text from public.invitations where id = current_setting('acc.inv_rev')::uuid),
+  'revoked', 'revoking a member revokes their pending invitations');
+
+-- The operator bootstrap creates the first invitation without an inviter.
+select lives_ok($$ insert into public.invitations (workspace_id, email, token_hash, workspace_role, expires_at, invited_by)
+  values ('a0000000-0000-4000-8000-00000000aaaa', 'null_inviter@acc.test',
+          encode(sha256(convert_to('null-inviter', 'UTF8')), 'hex'), 'creative', now() + interval '7 days', null) $$,
+  'invited_by accepts NULL');
 
 select * from finish();
 rollback;

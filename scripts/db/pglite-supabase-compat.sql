@@ -35,6 +35,11 @@ create table auth.users (
   is_anonymous boolean not null default false
 );
 
+create table auth.sessions (
+  id uuid primary key,
+  user_id uuid references auth.users(id) on delete cascade
+);
+
 -- Same resolution order as Supabase's auth helpers (claims set by PostgREST per request).
 create function auth.uid() returns uuid language sql stable as $$
   select coalesce(
