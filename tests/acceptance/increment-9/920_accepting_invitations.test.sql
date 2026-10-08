@@ -192,6 +192,7 @@ select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_fre
 select set_config('acc.new_otp', (extract(epoch from now()) - 100)::text, true);
 select pg_temp.login_as('d0000000-0000-4000-8000-000000000008', 'e0000000-0000-4000-8000-000000000005', ('[{"method": "otp", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
 select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_fresh_3')) $$, 'fresh account with recent otp is accepted');
+reset role;
 select is((select encrypted_password from auth.users where id = 'd0000000-0000-4000-8000-000000000008'), '', 'password is wiped for fresh account');
 select set_eq($$ select id from auth.sessions where user_id = 'd0000000-0000-4000-8000-000000000008' $$, $$ values ('e0000000-0000-4000-8000-000000000005'::uuid) $$, 'other sessions are deleted');
 
@@ -199,6 +200,7 @@ reset role;
 insert into auth.sessions (id, user_id) values ('e0000000-0000-4000-8000-000000000009', 'd0000000-0000-4000-8000-000000000005');
 select pg_temp.login_as('d0000000-0000-4000-8000-000000000005', 'e0000000-0000-4000-8000-000000000009', '[{"method": "password", "timestamp": 1}]'::jsonb);
 select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_pre')) $$, 'pre-existing account can use password');
+reset role;
 select is((select encrypted_password from auth.users where id = 'd0000000-0000-4000-8000-000000000005'), 'hash123', 'password is kept for pre-existing account');
 select ok((select count(*) from auth.sessions where user_id = 'd0000000-0000-4000-8000-000000000005') = 2, 'other sessions are kept for pre-existing account');
 
