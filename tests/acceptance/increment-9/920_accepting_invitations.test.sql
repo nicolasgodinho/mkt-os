@@ -218,6 +218,8 @@ select pg_temp.login_as('d0000000-0000-4000-8000-000000000012', 'e0000000-0000-4
 select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_lost_mgr')) $$, '22023', 'this invitation is not valid', 'fails if inviter lost capabilities');
 
 reset role;
+-- Workspace A's admin gets the admin role back for the remaining checks.
+update public.workspace_memberships set role = 'admin' where user_id = 'a0000000-0000-4000-8000-000000000001';
 select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
 select set_config('acc.tok_arch', t.token, true) from public.invite_client_member('a2000000-0000-4000-8000-0000000000a2', 'archived@acc.test', 'viewer') t;
 reset role;
@@ -255,8 +257,9 @@ select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_b'))
 reset role;
 select is((select encrypted_password from auth.users where id = 'd0000000-0000-4000-8000-000000000015'), '', 'password wiped after proven acceptance');
 
-select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
-select set_config('acc.tok_c', t.token, true) from public.invite_client_member('a1000000-0000-4000-8000-0000000000a1', 'mult@acc.test', 'viewer') t;
+-- A later invitation to another workspace.
+select pg_temp.login_as('b0000000-0000-4000-8000-000000000001');
+select set_config('acc.tok_c', t.token, true) from public.invite_workspace_member('b0000000-0000-4000-8000-00000000bbbb', 'mult@acc.test', 'creative') t;
 reset role;
 
 update auth.users set encrypted_password = 'newpassword' where id = 'd0000000-0000-4000-8000-000000000015';
