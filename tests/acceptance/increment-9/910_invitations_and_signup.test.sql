@@ -3,7 +3,7 @@
 -- Contract and fixture: tests/acceptance/increment-9/README.md
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(20);
+select plan(21);
 
 create function pg_temp.login_as(p_user uuid) returns void language plpgsql as $$
 begin
@@ -175,6 +175,11 @@ select public.revoke_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'd
 reset role;
 select is((select status::text from public.invitations where id = current_setting('acc.inv_rev')::uuid),
   'revoked', 'revoking a member revokes their pending invitations');
+
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select throws_ok($$ select public.revoke_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'd0000000-0000-4000-8000-000000000001') $$,
+  '22023', 'no membership to revoke', 'revoking a non-member still raises the original error');
+reset role;
 
 -- The operator bootstrap creates the first invitation without an inviter.
 select lives_ok($$ insert into public.invitations (workspace_id, email, token_hash, workspace_role, expires_at, invited_by)
