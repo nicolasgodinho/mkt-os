@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { expectNotFound, login, requireSupabase, SEED } from './support/supabase';
+import { expectNotFound, login, requireSupabase, SEED, getInbucketLink } from './support/supabase';
+import type { PublicSupabaseConfig } from './support/supabase';
 
 // Administration and invitations (Increment 9) with the real Supabase Auth, including the
 // invite-only signup hook. Skipped locally without the stack. Every run invites fresh e-mails.
@@ -21,21 +22,42 @@ async function invitationLink(page: Page): Promise<string> {
 }
 
 /** A new person opens the link in a fresh browser and creates the account. */
-async function signUpThroughLink(browser: Browser, link: string, email: string): Promise<Page> {
+async function signUpThroughLink(
+  browser: Browser,
+  link: string,
+  email: string,
+  config: PublicSupabaseConfig,
+): Promise<Page> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(link);
-  const form = page.getByRole('region', { name: 'Criar conta' });
-  await form.getByLabel('Seu nome').fill('Pessoa Convidada');
+
+  const form = page.getByRole('region', { name: 'Acesso' });
   await form.getByLabel('E-mail').fill(email);
-  await form.getByLabel('Senha (mínimo 10 caracteres)').fill(PASSWORD);
-  await form.getByRole('button', { name: 'Criar conta e aceitar' }).click();
+  await form.getByRole('button', { name: 'Receber link de acesso' }).click();
+  await expect(page.getByText('Se o convite for v')).toBeVisible();
+
+  const magicLink = await getInbucketLink(config, email);
+  await page.goto(magicLink);
+
+  const accept = page.getByRole('region', { name: 'Aceitar convite' });
+  if (await accept.isVisible()) {
+    await accept.getByRole('button', { name: 'Aceitar convite' }).click();
+  }
+
+  // Set password if asked
+  if (page.url().includes('/conta/senha')) {
+    await page.getByLabel(/Nova senha/).fill(PASSWORD);
+    await page.getByRole('button', { name: 'Salvar senha' }).click();
+  }
+
   return page;
 }
 
 test.describe('administration and invitations', () => {
+  let config: PublicSupabaseConfig;
   test.beforeEach(() => {
-    requireSupabase();
+    config = requireSupabase();
   });
 
   test('an admin invites a team member, who signs up through the link and joins', async ({
@@ -51,7 +73,7 @@ test.describe('administration and invitations', () => {
     await invite.getByRole('button', { name: 'Criar convite' }).click();
     const link = await invitationLink(page);
 
-    const invited = await signUpThroughLink(browser, link, email);
+    const invited = await signUpThroughLink(browser, link, email, config);
     await expect(invited).toHaveURL(new RegExp(`/w/${SEED.workspaces.jansen}$`));
     await expect(invited.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
     await invited.context().close();
@@ -78,7 +100,7 @@ test.describe('administration and invitations', () => {
     await invite.getByRole('button', { name: 'Criar convite' }).click();
     const link = await invitationLink(page);
 
-    const invited = await signUpThroughLink(browser, link, email);
+    const invited = await signUpThroughLink(browser, link, email, config);
     await expect(invited).toHaveURL(new RegExp(`/portal/${SEED.clients.a}$`));
     await expect(invited.getByRole('heading', { level: 1, name: 'Cliente Demo A' })).toBeVisible();
     await invited.context().close();
@@ -95,11 +117,22 @@ test.describe('administration and invitations', () => {
     await invite.getByRole('button', { name: 'Criar convite' }).click();
     const link = await invitationLink(page);
 
-    // The link with an e-mail that was never invited: the signup hook refuses the account.
-    const intruder = await signUpThroughLink(browser, link, `${unique('intruso')}@x.test`);
-    await expect(
-      intruder.getByText(/Não foi possível criar a conta com este e-mail/),
-    ).toBeVisible();
+    const intruderEmail = `${unique('intruso')}@x.test`;
+    const context = await browser.newContext();
+    const intruder = await context.newPage();
+    await intruder.goto(link);
+    const form = intruder.getByRole('region', { name: 'Acesso' });
+    await form.getByLabel('E-mail').fill(intruderEmail);
+    await form.getByRole('button', { name: 'Receber link de acesso' }).click();
+    await expect(intruder.getByText('Se o convite for v')).toBeVisible();
+
+    // Since the email is not invited, the signup hook rejects it and no email is sent.
+    await expect(async () => {
+      // Allow a tiny delay just in case it takes a bit to NOT send it
+      await new Promise((r) => setTimeout(r, 1000));
+      await getInbucketLink(config, intruderEmail);
+    }).rejects.toThrow(/No emails found for/);
+
     await intruder.context().close();
   });
 

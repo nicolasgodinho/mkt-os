@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { TextField } from '@jmos/ui';
 import { ActionForm } from '@/components/action-form';
-import { acceptInvitation, signUpWithInvitation } from '@/lib/admin/actions';
+import { acceptInvitation, sendAccessLink } from '@/lib/admin/actions';
 import { TOKEN } from '@/lib/admin/model';
 import { getSessionUser } from '@/lib/auth/session';
 import { getSupabaseConfig } from '@/lib/supabase/config';
@@ -45,25 +45,18 @@ export default async function InvitationPage({ params }: { params: Promise<{ tok
         <>
           <section aria-labelledby="create-account">
             <h2 id="create-account" className="text-sm font-medium">
-              Criar conta
+              Acesso
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Use exatamente o e-mail que recebeu o convite.
+              Digite o e-mail que recebeu o convite para receber um link de acesso.
             </p>
             <ActionForm
-              action={signUpWithInvitation}
+              action={sendAccessLink}
               hidden={{ token }}
-              buttons={[{ label: 'Criar conta e aceitar' }]}
-              pendingLabel="Criando…"
+              buttons={[{ label: 'Receber link de acesso' }]}
+              pendingLabel="Enviando…"
               className="mt-3"
             >
-              <TextField
-                id="signup-name"
-                name="name"
-                label="Seu nome"
-                autoComplete="name"
-                required
-              />
               <TextField
                 id="signup-email"
                 name="email"
@@ -72,21 +65,12 @@ export default async function InvitationPage({ params }: { params: Promise<{ tok
                 autoComplete="email"
                 required
               />
-              <TextField
-                id="signup-password"
-                name="password"
-                type="password"
-                label="Senha (mínimo 10 caracteres)"
-                autoComplete="new-password"
-                minLength={10}
-                required
-              />
             </ActionForm>
           </section>
           <p className="mt-6 text-sm">
             Já tem conta?{' '}
             <Link href={`/login?next=${encodeURIComponent(here)}`} className="text-primary">
-              Entre e volte a este link
+              Entre com senha e volte a este link
             </Link>
           </p>
         </>

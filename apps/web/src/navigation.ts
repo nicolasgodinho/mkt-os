@@ -24,7 +24,12 @@ export interface NavItem {
 }
 
 /** Internal global navigation (docs/06), scoped to the current workspace. */
-export function internalNavigation(workspaceSlug: string): readonly NavItem[] {
+import type { Capability } from '@/lib/identity/capabilities';
+
+export function internalNavigation(
+  workspaceSlug: string,
+  capabilities: readonly Capability[] = [],
+): readonly NavItem[] {
   const base = `/w/${workspaceSlug}`;
   return [
     { href: base, label: 'Início', icon: House, available: true },
@@ -39,7 +44,9 @@ export function internalNavigation(workspaceSlug: string): readonly NavItem[] {
     { href: `${base}/analytics`, label: 'Analytics', icon: ChartColumn, available: false },
     { href: `${base}/assets`, label: 'Ativos', icon: FolderOpen, available: false },
     { href: `${base}/automations`, label: 'Automações', icon: Workflow, available: true },
-    { href: `${base}/settings`, label: 'Configurações', icon: Settings, available: true },
+    ...(capabilities.includes('workspace.manage')
+      ? [{ href: `${base}/settings`, label: 'Configurações', icon: Settings, available: true }]
+      : []),
   ];
 }
 

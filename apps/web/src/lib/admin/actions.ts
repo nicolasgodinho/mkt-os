@@ -255,12 +255,26 @@ async function destination(workspaceId: string, clientId: string | null): Promis
 }
 
 async function accept(token: string): Promise<ActionState> {
+  const supabase = await createSupabaseWriter();
+  const userRes = supabase ? await supabase.auth.getUser() : null;
+  const user = userRes?.data.user;
+
   const { failure, data } = await rpc('accept_invitation', { p_token: token }, []);
   if (failure !== null) return failure;
   const row = z
     .array(z.object({ workspace_id: z.uuid(), client_id: z.uuid().nullable() }))
     .parse(data)[0];
   if (row === undefined) return INVALID;
+
+  if (user) {
+    const ageMs = Date.now() - new Date(user.created_at).getTime();
+    if (ageMs < 60 * 60 * 1000) {
+      // Fresh account (created within the last hour), direct to set password.
+      const dest = await destination(row.workspace_id, row.client_id);
+      redirect(`/conta/senha?next=${encodeURIComponent(dest)}`);
+    }
+  }
+
   redirect(await destination(row.workspace_id, row.client_id));
 }
 
@@ -270,22 +284,17 @@ export async function acceptInvitation(_p: ActionState, formData: FormData): Pro
   return accept(parsed.data.token);
 }
 
-const signUpSchema = z.object({
+const accessLinkSchema = z.object({
   token: z.string().regex(TOKEN),
-  name: z.string().trim().min(1).max(200),
   email: z.email().max(320),
-  password: z.string().min(10).max(200),
 });
 
-export async function signUpWithInvitation(
-  _p: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const parsed = signUpSchema.safeParse(values(formData));
+export async function sendAccessLink(_p: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = accessLinkSchema.safeParse(values(formData));
   if (!parsed.success) {
     return {
       status: 'error',
-      message: 'Informe nome, o e-mail convidado e uma senha com pelo menos 10 caracteres.',
+      message: 'Informe um e-mail válido.',
     };
   }
   const f = parsed.data;
@@ -294,28 +303,19 @@ export async function signUpWithInvitation(
     return { status: 'error', message: 'A autenticação não está configurada neste ambiente.' };
   }
   const origin = await publicOrigin();
-  const { data, error } = await supabase.auth.signUp({
+  const { error } = await supabase.auth.signInWithOtp({
     email: f.email,
-    password: f.password,
     options: {
-      data: { display_name: f.name },
-      // After confirming the e-mail, the person comes back to the invitation to accept it.
-      emailRedirectTo: `${origin}/convite/${f.token}`,
+      shouldCreateUser: true,
+      emailRedirectTo: `${origin}/auth/confirm?next=/convite/${f.token}`,
     },
   });
   if (error !== null) {
-    // The signup hook refuses e-mails without an invitation; never reveal which case applied.
-    return {
-      status: 'error',
-      message:
-        'Não foi possível criar a conta com este e-mail. Use exatamente o e-mail que recebeu o convite; se você já tem conta, entre e abra o link de novo.',
-    };
+    console.error('signInWithOtp error:', error);
   }
-  if (data.session === null) {
-    return {
-      status: 'success',
-      message: 'Conta criada. Confirme seu e-mail pelo link que enviamos e volte a este convite.',
-    };
-  }
-  return accept(f.token);
+  return {
+    status: 'success',
+    message:
+      'Se houver um convite para este e-mail, enviamos um link de acesso. Verifique sua caixa de entrada.',
+  };
 }

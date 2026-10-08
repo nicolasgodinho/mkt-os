@@ -2,6 +2,7 @@ import path from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { discoverLocalSupabase } from '../../../apps/web/src/lib/supabase/local-discovery';
 import type { PublicSupabaseConfig } from '../../../apps/web/src/lib/supabase/local-status';
+export type { PublicSupabaseConfig };
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../../..');
 
@@ -140,4 +141,23 @@ export async function apiAs(config: PublicSupabaseConfig, email: string): Promis
 
 export function anonymousApi(config: PublicSupabaseConfig): Api {
   return api(config, null);
+}
+
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/no-unsafe-argument */
+export async function getInbucketLink(
+  config: PublicSupabaseConfig,
+  email: string,
+): Promise<string> {
+  const inbucket = config.inbucketUrl ?? 'http://127.0.0.1:54324';
+  const mailboxes = await fetch(`${inbucket}/api/v1/mailbox/${email}`);
+  const messages = (await mailboxes.json()) as any[];
+  if (!messages || messages.length === 0) throw new Error('No emails found for ' + email);
+  const latest = messages[messages.length - 1];
+  const message = await fetch(`${inbucket}/api/v1/mailbox/${email}/${latest.id}`);
+  const data = (await message.json()) as any;
+  const match = /http:\/\/localhost:3000\/auth\/confirm[^\s"']*/.exec(
+    data.body.text || data.body.html || '',
+  );
+  if (!match) throw new Error('No link found in email');
+  return match[0];
 }

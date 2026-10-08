@@ -1,5 +1,4 @@
 import 'server-only';
-import { headers } from 'next/headers';
 import { z } from 'zod';
 import { createSupabaseReader } from '@/lib/supabase/server';
 import {
@@ -58,15 +57,27 @@ export async function listInvitations(
   return z.array(invitationSchema).parse(data);
 }
 
-/**
- * The public origin used in invitation links: `JMOS_PUBLIC_URL` when the deployment sets it
- * (recommended), else the request's own host.
- */
+// eslint-disable-next-line @typescript-eslint/require-await
 export async function publicOrigin(): Promise<string> {
   const configured = process.env.JMOS_PUBLIC_URL;
-  if (configured !== undefined && /^https?:\/\/[^\s/]+/.test(configured)) return configured;
-  const request = await headers();
-  const host = request.get('x-forwarded-host') ?? request.get('host') ?? 'localhost';
-  const proto = request.get('x-forwarded-proto') ?? 'http';
-  return `${proto.split(',')[0] ?? 'http'}://${host}`;
+  if (configured !== undefined) {
+    try {
+      const url = new URL(configured);
+      if (
+        url.protocol === 'https:' ||
+        url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1'
+      ) {
+        return url.origin;
+      }
+    } catch {
+      // invalid URL format, ignore and fall through to error
+    }
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    return 'http://localhost:3000';
+  }
+  throw new Error(
+    'Configuração ausente: JMOS_PUBLIC_URL deve ser definida em produção com uma origem https válida.',
+  );
 }

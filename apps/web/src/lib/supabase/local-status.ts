@@ -6,6 +6,7 @@
  * are deliberately ignored: they must never reach a browser bundle.
  */
 export interface PublicSupabaseConfig {
+  inbucketUrl?: string;
   url: string;
   publicKey: string;
 }
@@ -19,11 +20,12 @@ export function parseSupabaseStatusEnv(output: string): PublicSupabaseConfig | n
     if (match?.[1] !== undefined) values.set(match[1], match[2] ?? match[3] ?? '');
   }
   const url = values.get('API_URL');
+  const inbucketUrl = values.get('INBUCKET_URL');
   const publicKey = values.get('PUBLISHABLE_KEY') ?? values.get('ANON_KEY');
   if (url === undefined || url === '' || publicKey === undefined || publicKey === '') return null;
   if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(url)) {
     // Discovery exists for the local stack only; anything else must be configured explicitly.
     return null;
   }
-  return { url, publicKey };
+  return { url, publicKey, inbucketUrl };
 }

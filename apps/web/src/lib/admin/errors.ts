@@ -39,6 +39,12 @@ const KNOWN = new Map<string, string>([
     'client slug must be lowercase words separated by hyphens',
     'O identificador deve ter letras minúsculas, números e hífens.',
   ],
+  ['this client is archived', 'Este cliente está arquivado.'],
+  ['members cannot revoke themselves', 'Você não pode revogar o próprio acesso.'],
+  [
+    'the last active admin cannot be revoked',
+    'Não é possível revogar o último administrador ativo.',
+  ],
 ]);
 
 export function adminErrorMessage(error: {

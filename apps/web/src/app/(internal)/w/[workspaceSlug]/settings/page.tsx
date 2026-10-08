@@ -45,6 +45,24 @@ export default async function TeamSettingsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <section aria-labelledby="workspace-id" className="rounded-lg border bg-surface p-4">
+        <h2 id="workspace-id" className="text-sm font-medium">
+          Identificação do Workspace
+        </h2>
+        <p className="mt-1 mb-3 text-xs text-muted-foreground">
+          Forneça este ID caso seja solicitado pelo suporte técnico.
+        </p>
+        <div className="max-w-xl">
+          <TextField
+            id="workspace-id-field"
+            name="workspaceId"
+            label="ID"
+            defaultValue={workspace.id}
+            readOnly
+          />
+        </div>
+      </section>
+
       <section aria-labelledby="invite-member" className="rounded-lg border bg-surface p-4">
         <h2 id="invite-member" className="text-sm font-medium">
           Convidar para a equipe
@@ -128,6 +146,30 @@ export default async function TeamSettingsPage({
                         options={GRANTABLE_INTERNAL}
                         checked={member.capabilities}
                       />
+                      {member.capabilities.filter(
+                        (c) => !(GRANTABLE_INTERNAL as readonly string[]).includes(c),
+                      ).length > 0 && (
+                        <div className="mt-2 flex flex-col gap-1">
+                          {member.capabilities
+                            .filter((c) => !(GRANTABLE_INTERNAL as readonly string[]).includes(c))
+                            .map((c) => (
+                              <label
+                                key={c}
+                                className="flex items-center gap-2 text-sm text-muted-foreground opacity-70"
+                              >
+                                <input type="hidden" name="capabilities" value={c} />
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  readOnly
+                                  disabled
+                                  className="size-4 rounded border-input"
+                                />
+                                {CAPABILITY_LABELS[c]} (inalterável)
+                              </label>
+                            ))}
+                        </div>
+                      )}
                     </ActionForm>
                     {member.status === 'active' ? (
                       <ActionForm
