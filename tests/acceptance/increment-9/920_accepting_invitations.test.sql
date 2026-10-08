@@ -3,7 +3,7 @@
 -- Contract and fixture: tests/acceptance/increment-9/README.md
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(33);
 
 -- Fixture accounts are confirmed in this same transaction, so they count as accounts confirmed during
 -- their invitation's life: by default the session proved the inbox with an e-mail link (amr otp, now).
@@ -216,6 +216,54 @@ update public.workspace_memberships set role = 'creative', capabilities = '{}' w
 select pg_temp.make_user('d0000000-0000-4000-8000-000000000012', 'lost@acc.test', true);
 select pg_temp.login_as('d0000000-0000-4000-8000-000000000012', 'e0000000-0000-4000-8000-000000000012', ('[{"method": "otp", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
 select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_lost_mgr')) $$, '22023', 'this invitation is not valid', 'fails if inviter lost capabilities');
+
+reset role;
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select set_config('acc.tok_arch', t.token, true) from public.invite_client_member('a2000000-0000-4000-8000-0000000000a2', 'archived@acc.test', 'viewer') t;
+reset role;
+update public.clients set status = 'archived' where id = 'a2000000-0000-4000-8000-0000000000a2';
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000013', 'archived@acc.test', true);
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000013', 'e0000000-0000-4000-8000-000000000013', ('[{"method": "otp", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
+select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_arch')) $$, '22023', 'this client is archived', 'cannot accept invitation to archived client');
+
+reset role;
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select set_config('acc.tok_magic', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'magic@acc.test', 'creative') t;
+reset role;
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000014', 'magic@acc.test', true);
+insert into auth.sessions (id, user_id) values ('e0000000-0000-4000-8000-000000000014', 'd0000000-0000-4000-8000-000000000014');
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000014', 'e0000000-0000-4000-8000-000000000014', ('[{"method": "magiclink", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
+select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_magic')) $$, 'fresh account with recent magiclink is accepted');
+
+reset role;
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select set_config('acc.inv_a_id', t.invitation_id::text, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'mult@acc.test', 'creative') t;
+reset role;
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000015', 'mult@acc.test', true);
+update auth.users set encrypted_password = 'hacked' where id = 'd0000000-0000-4000-8000-000000000015';
+insert into auth.sessions (id, user_id) values ('e0000000-0000-4000-8000-000000000015', 'd0000000-0000-4000-8000-000000000015');
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select public.revoke_invitation(current_setting('acc.inv_a_id')::uuid);
+select set_config('acc.tok_b', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'mult@acc.test', 'creative') t;
+reset role;
+
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000015', 'e0000000-0000-4000-8000-000000000015', '[{"method": "password", "timestamp": 1}]'::jsonb);
+select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_b')) $$, '42501', 'permission denied', 'freshness considers earliest invitation');
+
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000015', 'e0000000-0000-4000-8000-000000000015', ('[{"method": "otp", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
+select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_b')) $$, 'fresh account with recent otp accepted on second invitation');
+reset role;
+select is((select encrypted_password from auth.users where id = 'd0000000-0000-4000-8000-000000000015'), '', 'password wiped after proven acceptance');
+
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select set_config('acc.tok_c', t.token, true) from public.invite_client_member('a1000000-0000-4000-8000-0000000000a1', 'mult@acc.test', 'viewer') t;
+reset role;
+
+update auth.users set encrypted_password = 'newpassword' where id = 'd0000000-0000-4000-8000-000000000015';
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000015', 'e0000000-0000-4000-8000-000000000015', '[{"method": "password", "timestamp": 1}]'::jsonb);
+select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_c')) $$, 'proven account can accept later invitation with password');
+reset role;
+select is((select encrypted_password from auth.users where id = 'd0000000-0000-4000-8000-000000000015'), 'newpassword', 'password kept on proven account');
 
 select * from finish();
 rollback;

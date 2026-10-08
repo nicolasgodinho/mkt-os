@@ -29,7 +29,8 @@ They were taken autonomously under Nicolas's instruction of 2026-10-03 ("1": mak
    - It runs for the signed-in user. The caller's e-mail must match the invitation and must be **confirmed**.
    - The invitation must be pending and unexpired.
    - The workspace row is locked before membership changes.
-   - For fresh accounts (confirmed during the invitation's life), the current session must have proven the inbox (`amr` contains an `otp` login within the last 30 minutes) or it raises 42501. On success, their `encrypted_password` is wiped, and all other `auth.sessions` rows are deleted. Pre-existing accounts bypass this inbox proof and password wipe.
+   - For fresh accounts (`public.users.inbox_proven_at is null` and confirmed during or after the earliest invitation), the current session must have proven the inbox (`amr` contains an `otp`, `magiclink`, or `email/signup` login within the last 30 minutes) or it raises 42501. On success, their `encrypted_password` is wiped, all other `auth.sessions` rows are deleted, and `inbox_proven_at` is set. Pre-existing accounts (`inbox_proven_at is not null` or confirmed before the earliest invitation) bypass this inbox proof and password wipe.
+   - The check order is: token/e-mail validity (22023 'this invitation is not valid') → inbox proof (42501) → workspace lock → already a member (22023 'this person is already a member') → inviter still allowed (22023 'this invitation is not valid') → archived client (22023 'this client is archived').
    - The inviter (`invited_by`) must still be an active manager holding the required capabilities, unless `invited_by` is NULL.
    - If the user is already an active member, it raises 22023 `this person is already a member` and the invitation stays pending.
    - Accepting activates the membership with the invited role and capabilities and records who accepted.
