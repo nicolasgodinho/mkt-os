@@ -5,7 +5,14 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select plan(26);
 
-create function pg_temp.login_as(p_user uuid, p_session uuid default null, p_amr jsonb default null) returns void language plpgsql as $$
+-- Fixture accounts are confirmed in this same transaction, so they count as accounts confirmed during
+-- their invitation's life: by default the session proved the inbox with an e-mail link (amr otp, now).
+create function pg_temp.login_as(
+  p_user uuid,
+  p_session uuid default null,
+  p_amr jsonb default jsonb_build_array(jsonb_build_object(
+    'method', 'otp', 'timestamp', floor(extract(epoch from now()))::bigint))
+) returns void language plpgsql as $$
 begin
   perform set_config('request.jwt.claims',
                      jsonb_strip_nulls(jsonb_build_object('sub', p_user, 'role', 'authenticated', 'session_id', p_session, 'amr', p_amr))::text, true);
