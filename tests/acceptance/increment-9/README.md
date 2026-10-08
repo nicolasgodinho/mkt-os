@@ -28,9 +28,13 @@ They were taken autonomously under Nicolas's instruction of 2026-10-03 ("1": mak
 4. **Acceptance.**
    - It runs for the signed-in user. The caller's e-mail must match the invitation and must be **confirmed**.
    - The invitation must be pending and unexpired.
+   - The workspace row is locked before membership changes.
+   - For fresh accounts (confirmed during the invitation's life), the current session must have proven the inbox (`amr` contains an `otp` login within the last 30 minutes) or it raises 42501. On success, their `encrypted_password` is wiped, and all other `auth.sessions` rows are deleted. Pre-existing accounts bypass this inbox proof and password wipe.
+   - The inviter (`invited_by`) must still be an active manager holding the required capabilities, unless `invited_by` is NULL.
+   - If the user is already an active member, it raises 22023 `this person is already a member` and the invitation stays pending.
    - Accepting activates the membership with the invited role and capabilities and records who accepted.
-   - Every refusal is the same 22023 `this invitation is not valid`, so a token reveals nothing.
-   - The token is single use.
+   - General refusals (like inviter lost capability, or token invalid) are the same 22023 `this invitation is not valid`.
+   - The token is single use, 64 hex characters long.
 5. **Visibility.** Managers of the target see invitations (`workspace.manage` for internal ones, `client.manage` for client ones). Nobody writes the table directly, and anon reads nothing. Managers can list their members with e-mail, role, capabilities and status.
 6. **Audit.** The actions `invitation.created`, `invitation.revoked` and `invitation.accepted` are recorded.
 
@@ -54,7 +58,8 @@ Everything lives in `public`. Errors follow the contract: P0002 when the target 
 - `client memberships can only hold client-safe capabilities`;
 - `a client-side member cannot become an internal member of the same workspace`;
 - `this invitation is no longer pending`;
-- `this invitation is not valid`.
+- `this invitation is not valid`;
+- `this client is archived`.
 
 **Columns read by the tests:**
 - `invitations`: `id, workspace_id, client_id, email, workspace_role, capabilities, status, expires_at, invited_by, accepted_by`. The `token_hash` column exists but cannot be selected through the API.

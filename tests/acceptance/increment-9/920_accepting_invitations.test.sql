@@ -3,12 +3,12 @@
 -- Contract and fixture: tests/acceptance/increment-9/README.md
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(26);
 
-create function pg_temp.login_as(p_user uuid) returns void language plpgsql as $$
+create function pg_temp.login_as(p_user uuid, p_session uuid default null, p_amr jsonb default null) returns void language plpgsql as $$
 begin
   perform set_config('request.jwt.claims',
-                     json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+                     jsonb_strip_nulls(jsonb_build_object('sub', p_user, 'role', 'authenticated', 'session_id', p_session, 'amr', p_amr))::text, true);
   perform set_config('role', 'authenticated', true);
 end;
 $$;
@@ -150,6 +150,63 @@ select is_empty($$ select 1 from public.workspace_memberships where user_id = 'd
 select ok(exists (select 1 from public.audit_logs where target_id = current_setting('acc.inv_int')::uuid
                                                    and action = 'invitation.accepted'),
   'acceptances are audited');
+
+-- Security checks for fresh vs pre-existing accounts --------------------------------------
+select pg_temp.login_as('a0000000-0000-4000-8000-000000000001');
+select set_config('acc.tok_fresh_1', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'nova1@acc.test', 'creative') t;
+select set_config('acc.tok_fresh_2', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'nova2@acc.test', 'creative') t;
+select set_config('acc.tok_fresh_3', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'nova3@acc.test', 'creative') t;
+select set_config('acc.tok_pre', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'preexisting@acc.test', 'creative') t;
+select set_config('acc.tok_active', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'active@acc.test', 'creative') t;
+select set_config('acc.tok_lost_mgr', t.token, true) from public.invite_workspace_member('a0000000-0000-4000-8000-00000000aaaa', 'lost@acc.test', 'creative') t;
+
+reset role;
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000005', 'preexisting@acc.test', true);
+update auth.users set email_confirmed_at = now() - interval '1 day', encrypted_password = 'hash123', created_at = now() - interval '1 day' where id = 'd0000000-0000-4000-8000-000000000005';
+insert into auth.sessions (id, user_id) values ('e0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000005');
+
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000006', 'nova1@acc.test', true);
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000007', 'nova2@acc.test', true);
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000008', 'nova3@acc.test', true);
+update auth.users set encrypted_password = 'hacked' where email in ('nova1@acc.test', 'nova2@acc.test', 'nova3@acc.test');
+insert into auth.sessions (id, user_id) values
+  ('e0000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000006'),
+  ('e0000000-0000-4000-8000-000000000003', 'd0000000-0000-4000-8000-000000000007'),
+  ('e0000000-0000-4000-8000-000000000004', 'd0000000-0000-4000-8000-000000000008'),
+  ('e0000000-0000-4000-8000-000000000005', 'd0000000-0000-4000-8000-000000000008');
+
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000006', 'e0000000-0000-4000-8000-000000000002', '[{"method": "password", "timestamp": 1}]'::jsonb);
+select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_fresh_1')) $$, '42501', 'permission denied', 'fresh account without otp amr is rejected');
+
+select set_config('acc.old_otp', (extract(epoch from now()) - 2000)::text, true);
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000007', 'e0000000-0000-4000-8000-000000000003', ('[{"method": "otp", "timestamp": ' || current_setting('acc.old_otp') || '}]')::jsonb);
+select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_fresh_2')) $$, '42501', 'permission denied', 'fresh account with old otp is rejected');
+
+select set_config('acc.new_otp', (extract(epoch from now()) - 100)::text, true);
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000008', 'e0000000-0000-4000-8000-000000000005', ('[{"method": "otp", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
+select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_fresh_3')) $$, 'fresh account with recent otp is accepted');
+select is((select encrypted_password from auth.users where id = 'd0000000-0000-4000-8000-000000000008'), '', 'password is wiped for fresh account');
+select set_eq($$ select id from auth.sessions where user_id = 'd0000000-0000-4000-8000-000000000008' $$, $$ values ('e0000000-0000-4000-8000-000000000005'::uuid) $$, 'other sessions are deleted');
+
+reset role;
+insert into auth.sessions (id, user_id) values ('e0000000-0000-4000-8000-000000000009', 'd0000000-0000-4000-8000-000000000005');
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000005', 'e0000000-0000-4000-8000-000000000009', '[{"method": "password", "timestamp": 1}]'::jsonb);
+select lives_ok($$ select public.accept_invitation(current_setting('acc.tok_pre')) $$, 'pre-existing account can use password');
+select is((select encrypted_password from auth.users where id = 'd0000000-0000-4000-8000-000000000005'), 'hash123', 'password is kept for pre-existing account');
+select ok((select count(*) from auth.sessions where user_id = 'd0000000-0000-4000-8000-000000000005') = 2, 'other sessions are kept for pre-existing account');
+
+reset role;
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000011', 'active@acc.test', true);
+insert into public.workspace_memberships (workspace_id, user_id, role, capabilities, status)
+  values ('a0000000-0000-4000-8000-00000000aaaa', 'd0000000-0000-4000-8000-000000000011', 'creative', '{}', 'active');
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000011', 'e0000000-0000-4000-8000-000000000011', ('[{"method": "otp", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
+select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_active')) $$, '22023', 'this person is already a member', 'active member cannot accept another invitation to same target');
+
+reset role;
+update public.workspace_memberships set role = 'creative', capabilities = '{}' where user_id = 'a0000000-0000-4000-8000-000000000001';
+select pg_temp.make_user('d0000000-0000-4000-8000-000000000012', 'lost@acc.test', true);
+select pg_temp.login_as('d0000000-0000-4000-8000-000000000012', 'e0000000-0000-4000-8000-000000000012', ('[{"method": "otp", "timestamp": ' || current_setting('acc.new_otp') || '}]')::jsonb);
+select throws_ok($$ select public.accept_invitation(current_setting('acc.tok_lost_mgr')) $$, '22023', 'this invitation is not valid', 'fails if inviter lost capabilities');
 
 select * from finish();
 rollback;
