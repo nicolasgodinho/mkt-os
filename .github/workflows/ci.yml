@@ -26,6 +26,8 @@ jobs:
       CI: 'true'
       JMOS_DB_MODE: supabase # never fall back to PGlite in CI
       NEXT_TELEMETRY_DISABLED: '1'
+      # Origin of invitation links: the E2E production server (playwright.config.ts port; ADR 0005).
+      JMOS_PUBLIC_URL: http://127.0.0.1:3917
     steps:
       - uses: actions/checkout@v5
         with:

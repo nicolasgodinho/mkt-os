@@ -10,6 +10,8 @@
 create role anon nologin noinherit;
 create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
+-- The role Supabase Auth uses to run Auth hooks (e.g. before_user_created).
+create role supabase_auth_admin nologin noinherit;
 
 create schema auth;
 create schema extensions;
@@ -24,12 +26,18 @@ create table auth.users (
   role varchar(255),
   email varchar(255),
   encrypted_password varchar(255),
+  email_confirmed_at timestamptz,
   raw_app_meta_data jsonb,
   raw_user_meta_data jsonb,
   created_at timestamptz,
   updated_at timestamptz,
   is_sso_user boolean not null default false,
   is_anonymous boolean not null default false
+);
+
+create table auth.sessions (
+  id uuid primary key,
+  user_id uuid references auth.users(id) on delete cascade
 );
 
 -- Same resolution order as Supabase's auth helpers (claims set by PostgREST per request).
