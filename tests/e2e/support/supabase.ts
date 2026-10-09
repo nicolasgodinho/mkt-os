@@ -2,6 +2,7 @@ import path from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { discoverLocalSupabase } from '../../../apps/web/src/lib/supabase/local-discovery';
 import type { PublicSupabaseConfig } from '../../../apps/web/src/lib/supabase/local-status';
+export type { PublicSupabaseConfig };
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../../..');
 
@@ -140,4 +141,41 @@ export async function apiAs(config: PublicSupabaseConfig, email: string): Promis
 
 export function anonymousApi(config: PublicSupabaseConfig): Api {
   return api(config, null);
+}
+
+// Local mail catcher of the Supabase stack (Mailpit, `[inbucket] port` in supabase/config.toml).
+const MAIL_API = 'http://127.0.0.1:54324/api/v1';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+async function latestMessageText(email: string): Promise<string | null> {
+  const search = await fetch(`${MAIL_API}/search?query=${encodeURIComponent(`to:"${email}"`)}`);
+  if (!search.ok) throw new Error(`mail catcher search failed: ${String(search.status)}`);
+  const found: unknown = await search.json();
+  const messages = isRecord(found) && Array.isArray(found.messages) ? found.messages : [];
+  const first: unknown = messages[0];
+  if (!isRecord(first) || typeof first.ID !== 'string') return null;
+  const response = await fetch(`${MAIL_API}/message/${encodeURIComponent(first.ID)}`);
+  if (!response.ok) throw new Error(`mail catcher read failed: ${String(response.status)}`);
+  const message: unknown = await response.json();
+  if (!isRecord(message)) return null;
+  const text = typeof message.Text === 'string' ? message.Text : '';
+  const html = typeof message.HTML === 'string' ? message.HTML : '';
+  return `${text}
+${html}`;
+}
+
+/** The sign-in link from the newest e-mail sent to `email` (waits up to 15 s for it to arrive). */
+export async function getEmailLink(email: string): Promise<string> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const body = await latestMessageText(email);
+    const match = body
+      ? /https?:\/\/[^\s"'<>]+(?:auth\/v1\/verify|auth\/confirm)[^\s"'<>]*/.exec(body)
+      : null;
+    if (match) return match[0].replaceAll('&amp;', '&');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`no sign-in link was e-mailed to ${email}`);
 }

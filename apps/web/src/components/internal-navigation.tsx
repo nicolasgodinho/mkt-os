@@ -7,13 +7,21 @@ import type { Workspace } from '@/lib/identity/queries';
 import { internalNavigation } from '@/navigation';
 import { SignOutButton } from './sign-out-button';
 
+import type { Capability } from '@/lib/identity/capabilities';
+
 interface InternalNavigationProps {
+  capabilities: readonly Capability[];
   workspace: Workspace;
   workspaces: readonly Workspace[];
   userEmail: string | null;
 }
 
-export function InternalNavigation({ workspace, workspaces, userEmail }: InternalNavigationProps) {
+export function InternalNavigation({
+  workspace,
+  workspaces,
+  userEmail,
+  capabilities,
+}: InternalNavigationProps) {
   const pathname = usePathname();
   const home = `/w/${workspace.slug}`;
 
@@ -54,17 +62,19 @@ export function InternalNavigation({ workspace, workspaces, userEmail }: Interna
         </div>
       }
     >
-      {internalNavigation(workspace.slug).map(({ href, label, icon: Icon, available }) => (
-        <SidebarItem
-          key={href}
-          href={href}
-          label={label}
-          icon={<Icon aria-hidden className="size-4 shrink-0" />}
-          active={available && (href === home ? pathname === home : pathname.startsWith(href))}
-          unavailableHint={available ? undefined : 'em breve'}
-          linkComponent={Link}
-        />
-      ))}
+      {internalNavigation(workspace.slug, capabilities).map(
+        ({ href, label, icon: Icon, available }) => (
+          <SidebarItem
+            key={href}
+            href={href}
+            label={label}
+            icon={<Icon aria-hidden className="size-4 shrink-0" />}
+            active={available && (href === home ? pathname === home : pathname.startsWith(href))}
+            unavailableHint={available ? undefined : 'em breve'}
+            linkComponent={Link}
+          />
+        ),
+      )}
     </Sidebar>
   );
 }
