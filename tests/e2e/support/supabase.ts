@@ -143,21 +143,39 @@ export function anonymousApi(config: PublicSupabaseConfig): Api {
   return api(config, null);
 }
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/no-unsafe-argument */
-export async function getInbucketLink(
-  config: PublicSupabaseConfig,
-  email: string,
-): Promise<string> {
-  const inbucket = config.inbucketUrl ?? 'http://127.0.0.1:54324';
-  const mailboxes = await fetch(`${inbucket}/api/v1/mailbox/${email}`);
-  const messages = (await mailboxes.json()) as any[];
-  if (!messages || messages.length === 0) throw new Error('No emails found for ' + email);
-  const latest = messages[messages.length - 1];
-  const message = await fetch(`${inbucket}/api/v1/mailbox/${email}/${latest.id}`);
-  const data = (await message.json()) as any;
-  const match = /http:\/\/localhost:3000\/auth\/confirm[^\s"']*/.exec(
-    data.body.text || data.body.html || '',
-  );
-  if (!match) throw new Error('No link found in email');
-  return match[0];
+// Local mail catcher of the Supabase stack (Mailpit, `[inbucket] port` in supabase/config.toml).
+const MAIL_API = 'http://127.0.0.1:54324/api/v1';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+async function latestMessageText(email: string): Promise<string | null> {
+  const search = await fetch(`${MAIL_API}/search?query=${encodeURIComponent(`to:"${email}"`)}`);
+  if (!search.ok) throw new Error(`mail catcher search failed: ${String(search.status)}`);
+  const found: unknown = await search.json();
+  const messages = isRecord(found) && Array.isArray(found.messages) ? found.messages : [];
+  const first: unknown = messages[0];
+  if (!isRecord(first) || typeof first.ID !== 'string') return null;
+  const response = await fetch(`${MAIL_API}/message/${encodeURIComponent(first.ID)}`);
+  if (!response.ok) throw new Error(`mail catcher read failed: ${String(response.status)}`);
+  const message: unknown = await response.json();
+  if (!isRecord(message)) return null;
+  const text = typeof message.Text === 'string' ? message.Text : '';
+  const html = typeof message.HTML === 'string' ? message.HTML : '';
+  return `${text}
+${html}`;
+}
+
+/** The sign-in link from the newest e-mail sent to `email` (waits up to 15 s for it to arrive). */
+export async function getEmailLink(email: string): Promise<string> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const body = await latestMessageText(email);
+    const match = body
+      ? /https?:\/\/[^\s"'<>]+(?:auth\/v1\/verify|auth\/confirm)[^\s"'<>]*/.exec(body)
+      : null;
+    if (match) return match[0].replaceAll('&amp;', '&');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`no sign-in link was e-mailed to ${email}`);
 }

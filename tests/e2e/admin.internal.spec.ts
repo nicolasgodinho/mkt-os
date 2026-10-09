@@ -1,6 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { expectNotFound, login, requireSupabase, SEED, getInbucketLink } from './support/supabase';
-import type { PublicSupabaseConfig } from './support/supabase';
+import { expectNotFound, login, requireSupabase, SEED, getEmailLink } from './support/supabase';
 
 // Administration and invitations (Increment 9) with the real Supabase Auth, including the
 // invite-only signup hook. Skipped locally without the stack. Every run invites fresh e-mails.
@@ -22,12 +21,7 @@ async function invitationLink(page: Page): Promise<string> {
 }
 
 /** A new person opens the link in a fresh browser and creates the account. */
-async function signUpThroughLink(
-  browser: Browser,
-  link: string,
-  email: string,
-  config: PublicSupabaseConfig,
-): Promise<Page> {
+async function signUpThroughLink(browser: Browser, link: string, email: string): Promise<Page> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(link);
@@ -39,7 +33,7 @@ async function signUpThroughLink(
     page.getByText('Se houver um convite para este e-mail, enviamos um link de acesso'),
   ).toBeVisible();
 
-  const magicLink = await getInbucketLink(config, email);
+  const magicLink = await getEmailLink(email);
   await page.goto(magicLink);
 
   const accept = page.getByRole('region', { name: 'Aceitar convite' });
@@ -54,9 +48,8 @@ async function signUpThroughLink(
 }
 
 test.describe('administration and invitations', () => {
-  let config: PublicSupabaseConfig;
   test.beforeEach(() => {
-    config = requireSupabase();
+    requireSupabase();
   });
 
   test('an admin invites a team member, who signs up through the link and joins', async ({
@@ -72,7 +65,7 @@ test.describe('administration and invitations', () => {
     await invite.getByRole('button', { name: 'Criar convite' }).click();
     const link = await invitationLink(page);
 
-    const invited = await signUpThroughLink(browser, link, email, config);
+    const invited = await signUpThroughLink(browser, link, email);
     await expect(invited).toHaveURL(new RegExp(`/w/${SEED.workspaces.jansen}$`));
     await expect(invited.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
     await invited.context().close();
@@ -99,7 +92,7 @@ test.describe('administration and invitations', () => {
     await invite.getByRole('button', { name: 'Criar convite' }).click();
     const link = await invitationLink(page);
 
-    const invited = await signUpThroughLink(browser, link, email, config);
+    const invited = await signUpThroughLink(browser, link, email);
     await expect(invited).toHaveURL(new RegExp(`/portal/${SEED.clients.a}$`));
     await expect(invited.getByRole('heading', { level: 1, name: 'Cliente Demo A' })).toBeVisible();
     await invited.context().close();
