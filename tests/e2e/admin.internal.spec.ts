@@ -35,21 +35,20 @@ async function signUpThroughLink(
   const form = page.getByRole('region', { name: 'Acesso' });
   await form.getByLabel('E-mail').fill(email);
   await form.getByRole('button', { name: 'Receber link de acesso' }).click();
-  await expect(page.getByText('Se o convite for v')).toBeVisible();
+  await expect(
+    page.getByText('Se houver um convite para este e-mail, enviamos um link de acesso'),
+  ).toBeVisible();
 
   const magicLink = await getInbucketLink(config, email);
   await page.goto(magicLink);
 
   const accept = page.getByRole('region', { name: 'Aceitar convite' });
-  if (await accept.isVisible()) {
-    await accept.getByRole('button', { name: 'Aceitar convite' }).click();
-  }
+  await accept.getByRole('button', { name: 'Aceitar convite' }).click();
 
-  // Set password if asked
-  if (page.url().includes('/conta/senha')) {
-    await page.getByLabel(/Nova senha/).fill(PASSWORD);
-    await page.getByRole('button', { name: 'Salvar senha' }).click();
-  }
+  // Set password
+  await page.waitForURL('**/conta/senha**');
+  await page.getByLabel(/Nova senha/).fill(PASSWORD);
+  await page.getByRole('button', { name: 'Salvar senha' }).click();
 
   return page;
 }
@@ -117,21 +116,18 @@ test.describe('administration and invitations', () => {
     await invite.getByRole('button', { name: 'Criar convite' }).click();
     const link = await invitationLink(page);
 
-    const intruderEmail = `${unique('intruso')}@x.test`;
     const context = await browser.newContext();
     const intruder = await context.newPage();
     await intruder.goto(link);
-    const form = intruder.getByRole('region', { name: 'Acesso' });
-    await form.getByLabel('E-mail').fill(intruderEmail);
-    await form.getByRole('button', { name: 'Receber link de acesso' }).click();
-    await expect(intruder.getByText('Se o convite for v')).toBeVisible();
+    // The intruder logs in to a different existing account
+    await login(intruder, SEED.users.contributor);
+    await intruder.goto(link);
 
-    // Since the email is not invited, the signup hook rejects it and no email is sent.
-    await expect(async () => {
-      // Allow a tiny delay just in case it takes a bit to NOT send it
-      await new Promise((r) => setTimeout(r, 1000));
-      await getInbucketLink(config, intruderEmail);
-    }).rejects.toThrow(/No emails found for/);
+    const accept = intruder.getByRole('region', { name: 'Aceitar convite' });
+    await accept.getByRole('button', { name: 'Aceitar convite' }).click();
+
+    // They are refused because the e-mail does not match
+    await expect(intruder.getByText('Este convite não é válido para esta conta')).toBeVisible();
 
     await intruder.context().close();
   });

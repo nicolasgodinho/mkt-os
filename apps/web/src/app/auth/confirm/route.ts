@@ -1,19 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseWriter } from '@/lib/supabase/server';
+import { safeNextPath } from '@/lib/auth/safe-redirect';
 
 // E-mail link types this app sends: sign-in links and sign-up confirmations.
 const EMAIL_LINK_TYPES = ['email', 'magiclink', 'signup'] as const;
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
+  const { searchParams, origin } = new URL(request.url);
   const token_hash = searchParams.get('token_hash');
   const type = searchParams.get('type');
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/';
 
-  // Validate `next` is a same-origin relative path
-  const isValidNext = next.startsWith('/') && !next.startsWith('//') && !next.includes('\\');
-  const redirectTarget = isValidNext ? next : '/';
+  const redirectTarget = safeNextPath(searchParams.get('next'), origin);
 
   const supabase = await createSupabaseWriter();
   if (!supabase) {

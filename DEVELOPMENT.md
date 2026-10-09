@@ -206,8 +206,8 @@ failure and prints a summary. CI runs the same command.
 - **Accepting.**
   - A new person creates the account on the invitation page and is taken to the workspace or the portal.
   - Someone with an account signs in, opens the link and clicks "Aceitar convite".
-  - Acceptance requires the invited, **confirmed** e-mail. Local Supabase auto-confirms; production must keep confirmations on (see `DEPLOYMENT.md`).
-- **Links.** They use `JMOS_PUBLIC_URL` when it is set, otherwise the request's host.
+  - Acceptance requires the invited, **confirmed** e-mail. Confirmations are enabled locally (view e-mails in the mail catcher at http://127.0.0.1:54324); production must keep confirmations on (see `DEPLOYMENT.md`).
+- **Links.** They use `JMOS_PUBLIC_URL` when it is set, otherwise they default to `http://127.0.0.1:3000` in development.
 - **Contract.** `tests/acceptance/increment-9/README.md`.
 
 ## Repository layout

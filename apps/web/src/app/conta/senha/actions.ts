@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import type { ActionState } from '@/lib/action-state';
 import { createSupabaseWriter } from '@/lib/supabase/server';
+import { safeNextPath } from '@/lib/auth/safe-redirect';
+import { publicOrigin } from '@/lib/public-origin';
 
 const passwordSchema = z.object({
   password: z.string().min(12).max(200),
@@ -18,8 +20,8 @@ export async function updatePassword(_p: ActionState, formData: FormData): Promi
   const { password, next } = result.data;
 
   // Validate `next` is a same-origin relative path
-  const isValidNext = next.startsWith('/') && !next.startsWith('//') && !next.includes('\\');
-  const redirectTarget = isValidNext ? next : '/';
+  const origin = publicOrigin();
+  const redirectTarget = safeNextPath(next, origin);
 
   const supabase = await createSupabaseWriter();
   if (supabase === null) {

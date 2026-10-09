@@ -56,28 +56,3 @@ export async function listInvitations(
   if (error !== null) throw new AdminDataError('invitations', error.code);
   return z.array(invitationSchema).parse(data);
 }
-
-// eslint-disable-next-line @typescript-eslint/require-await
-export async function publicOrigin(): Promise<string> {
-  const configured = process.env.JMOS_PUBLIC_URL;
-  if (configured !== undefined) {
-    try {
-      const url = new URL(configured);
-      if (
-        url.protocol === 'https:' ||
-        url.hostname === 'localhost' ||
-        url.hostname === '127.0.0.1'
-      ) {
-        return url.origin;
-      }
-    } catch {
-      // invalid URL format, ignore and fall through to error
-    }
-  }
-  if (process.env.NODE_ENV !== 'production') {
-    return 'http://localhost:3000';
-  }
-  throw new Error(
-    'Configuração ausente: JMOS_PUBLIC_URL deve ser definida em produção com uma origem https válida.',
-  );
-}

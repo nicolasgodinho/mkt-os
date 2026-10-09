@@ -8,6 +8,8 @@
 -- * Acceptance runs for the signed-in user and requires the invited, confirmed e-mail.
 -- Contract: tests/acceptance/increment-9/README.md.
 
+alter table public.users add column inbox_proven_at timestamptz;
+
 create type public.invitation_status as enum ('pending', 'accepted', 'revoked', 'expired');
 
 create table public.invitations (
@@ -103,7 +105,7 @@ begin
                       jsonb_build_object('status', 'revoked', 'reason', 'replaced'));
   end loop;
 
-  token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+  token := encode(sha256(convert_to(gen_random_uuid()::text || gen_random_uuid()::text || gen_random_uuid()::text, 'UTF8')), 'hex');
   insert into public.invitations (workspace_id, client_id, email, workspace_role, client_role,
                                   capabilities, token_hash, invited_by)
   values (p_workspace_id, p_client_id, p_email, p_workspace_role, p_client_role, p_capabilities,
@@ -266,24 +268,63 @@ declare
   v_email text;
   v_confirmed timestamptz;
   v_created timestamptz;
+  v_inbox_proven_at timestamptz;
+  v_earliest_invitation_created_at timestamptz;
   v_jwt jsonb := auth.jwt();
   v_amr jsonb;
   v_amr_entry jsonb;
   v_otp_valid boolean := false;
+  v_is_fresh boolean := false;
   v_session_id uuid;
 begin
   select * into v_invitation from public.invitations i
-   where i.token_hash = encode(sha256(convert_to(coalesce(p_token, ''), 'UTF8')), 'hex')
-     for update;
-  select lower(u.email), u.email_confirmed_at, u.created_at into v_email, v_confirmed, v_created
-    from auth.users u where u.id = v_uid;
+   where i.token_hash = encode(sha256(convert_to(coalesce(p_token, ''), 'UTF8')), 'hex');
+  select lower(u.email), u.email_confirmed_at, u.created_at, pu.inbox_proven_at
+    into v_email, v_confirmed, v_created, v_inbox_proven_at
+    from auth.users u join public.users pu on u.id = pu.id where u.id = v_uid;
   if v_invitation.id is null or v_invitation.status <> 'pending'
      or v_invitation.expires_at <= now() or v_email is distinct from v_invitation.email
      or v_confirmed is null then
     raise exception 'this invitation is not valid' using errcode = '22023';
   end if;
 
-  -- The inviter must still be allowed to invite (an operator bootstrap invitation has no inviter).
+  select min(created_at) into v_earliest_invitation_created_at
+    from public.invitations where email = v_email;
+
+  if v_inbox_proven_at is null and v_confirmed >= v_earliest_invitation_created_at then
+    v_amr := v_jwt -> 'amr';
+    if jsonb_typeof(v_amr) = 'array' then
+      for v_amr_entry in select * from jsonb_array_elements(v_amr) loop
+        if (v_amr_entry ->> 'method') in ('otp', 'magiclink', 'email/signup') and
+           (v_amr_entry ->> 'timestamp')::numeric >= extract(epoch from now() - interval '30 minutes') then
+          v_otp_valid := true;
+          exit;
+        end if;
+      end loop;
+    end if;
+    if not v_otp_valid then
+      raise exception 'permission denied' using errcode = '42501';
+    end if;
+    v_is_fresh := true;
+  end if;
+
+  perform 1 from public.workspaces w where w.id = v_invitation.workspace_id for update;
+
+  select * into v_invitation from public.invitations i
+   where i.id = v_invitation.id for update;
+  if v_invitation.status <> 'pending' or v_invitation.expires_at <= now() then
+    raise exception 'this invitation is not valid' using errcode = '22023';
+  end if;
+
+  if exists (select 1 from public.workspace_memberships m
+              where v_invitation.client_id is null and m.workspace_id = v_invitation.workspace_id
+                and m.user_id = v_uid and m.status = 'active')
+     or exists (select 1 from public.client_memberships m
+                 where m.client_id = v_invitation.client_id and m.user_id = v_uid
+                   and m.status = 'active') then
+    raise exception 'this person is already a member' using errcode = '22023';
+  end if;
+
   if v_invitation.invited_by is not null
      and not coalesce(case when v_invitation.client_id is null
            then 'workspace.manage' = any (app.workspace_capabilities_of(v_invitation.invited_by,
@@ -294,32 +335,10 @@ begin
     raise exception 'this invitation is not valid' using errcode = '22023';
   end if;
 
-  if v_confirmed >= v_invitation.created_at then
-    v_amr := v_jwt -> 'amr';
-    if jsonb_typeof(v_amr) = 'array' then
-      for v_amr_entry in select * from jsonb_array_elements(v_amr) loop
-        if (v_amr_entry ->> 'method') = 'otp' and
-           (v_amr_entry ->> 'timestamp')::numeric >= extract(epoch from now() - interval '30 minutes') then
-          v_otp_valid := true;
-          exit;
-        end if;
-      end loop;
+  if v_invitation.client_id is not null then
+    if (select status from public.clients where id = v_invitation.client_id) = 'archived' then
+      raise exception 'this client is archived' using errcode = '22023';
     end if;
-    if not v_otp_valid then
-      raise exception 'permission denied' using errcode = '42501';
-    end if;
-  end if;
-
-  -- Serializes membership changes in the workspace (as set_* and revoke_* do).
-  perform 1 from public.workspaces w where w.id = v_invitation.workspace_id for update;
-
-  if exists (select 1 from public.workspace_memberships m
-              where v_invitation.client_id is null and m.workspace_id = v_invitation.workspace_id
-                and m.user_id = v_uid and m.status = 'active')
-     or exists (select 1 from public.client_memberships m
-                 where m.client_id = v_invitation.client_id and m.user_id = v_uid
-                   and m.status = 'active') then
-    raise exception 'this person is already a member' using errcode = '22023';
   end if;
 
   if v_invitation.client_id is null then
@@ -356,10 +375,11 @@ begin
                     'invitation', v_invitation.id, jsonb_build_object('status', 'pending'),
                     jsonb_build_object('status', 'accepted', 'user_id', v_uid));
 
-  if v_confirmed >= v_invitation.created_at then
+  if v_is_fresh then
     update auth.users set encrypted_password = '' where id = v_uid;
     v_session_id := nullif(v_jwt ->> 'session_id', '')::uuid;
     delete from auth.sessions where user_id = v_uid and id is distinct from v_session_id;
+    update public.users set inbox_proven_at = now() where id = v_uid;
   end if;
 
   workspace_id := v_invitation.workspace_id;
@@ -507,45 +527,47 @@ set search_path = ''
 as $$
 declare
   v_uid uuid := app.require_uid();
+  v_before public.workspace_memberships;
   v_email text;
   v_revoked uuid;
 begin
   perform app.require_workspace_manager(v_uid, p_workspace_id);
+  -- Serialize membership changes per workspace so concurrent revocations cannot both pass the
+  -- "at least one active admin" check (time-of-check / time-of-use).
+  perform 1 from public.workspaces w where w.id = p_workspace_id for update;
+
   if p_user_id = v_uid then
-    raise exception 'members cannot revoke themselves' using errcode = '22023';
+    raise exception 'members cannot change their own membership' using errcode = '22023';
   end if;
 
-  perform 1 from public.workspace_memberships
-   where workspace_id = p_workspace_id and user_id = p_user_id for update;
+  select * into v_before from public.workspace_memberships m
+   where m.workspace_id = p_workspace_id and m.user_id = p_user_id
+   for update;
+  if v_before.user_id is null or v_before.status = 'revoked' then
+    raise exception 'no membership to revoke' using errcode = '22023';
+  end if;
+  if v_before.status = 'active' and v_before.role = 'admin' then
+    perform app.assert_admin_remains(p_workspace_id, p_user_id);
+  end if;
 
-  if exists (select 1 from public.workspace_memberships
-              where workspace_id = p_workspace_id and user_id = p_user_id
-                and status = 'active') then
-    if (select role from public.workspace_memberships
-         where workspace_id = p_workspace_id and user_id = p_user_id) = 'admin' then
-      if (select count(*) from public.workspace_memberships
-           where workspace_id = p_workspace_id and role = 'admin' and status = 'active') <= 1 then
-        raise exception 'the last active admin cannot be revoked' using errcode = '22023';
-      end if;
-    end if;
+  update public.workspace_memberships m set status = 'revoked'
+   where m.workspace_id = p_workspace_id and m.user_id = p_user_id;
 
-    update public.workspace_memberships set status = 'revoked'
-     where workspace_id = p_workspace_id and user_id = p_user_id;
+  perform app.audit(p_workspace_id, null, 'workspace_membership.revoked', 'user', p_user_id,
+                    jsonb_build_object('role', v_before.role, 'status', v_before.status),
+                    jsonb_build_object('role', v_before.role, 'status', 'revoked'));
 
-    perform app.audit(p_workspace_id, null, 'member.revoked', 'user', p_user_id, null, null);
-
-    select lower(u.email) into v_email from auth.users u where u.id = p_user_id;
-    if v_email is not null then
-      for v_revoked in
-        update public.invitations i set status = 'revoked'
-         where i.workspace_id = p_workspace_id and i.email = v_email and i.status = 'pending'
-        returning i.id
-      loop
-        perform app.audit(p_workspace_id, null, 'invitation.revoked', 'invitation', v_revoked,
-                          jsonb_build_object('status', 'pending'),
-                          jsonb_build_object('status', 'revoked', 'reason', 'membership revoked'));
-      end loop;
-    end if;
+  select lower(u.email) into v_email from auth.users u where u.id = p_user_id;
+  if v_email is not null then
+    for v_revoked in
+      update public.invitations i set status = 'revoked'
+       where i.workspace_id = p_workspace_id and i.email = v_email and i.status = 'pending'
+      returning i.id
+    loop
+      perform app.audit(p_workspace_id, null, 'invitation.revoked', 'invitation', v_revoked,
+                        jsonb_build_object('status', 'pending'),
+                        jsonb_build_object('status', 'revoked'));
+    end loop;
   end if;
 end;
 $$;
@@ -560,36 +582,35 @@ as $$
 declare
   v_uid uuid := app.require_uid();
   v_workspace_id uuid := app.require_client_manager(v_uid, p_client_id);
+  v_before public.client_memberships;
   v_email text;
   v_revoked uuid;
 begin
-  if p_user_id = v_uid then
-    raise exception 'members cannot revoke themselves' using errcode = '22023';
+  select * into v_before from public.client_memberships m
+   where m.client_id = p_client_id and m.user_id = p_user_id
+   for update;
+  if v_before.user_id is null or v_before.status = 'revoked' then
+    raise exception 'no membership to revoke' using errcode = '22023';
   end if;
 
-  perform 1 from public.client_memberships
-   where client_id = p_client_id and user_id = p_user_id for update;
+  update public.client_memberships m set status = 'revoked'
+   where m.client_id = p_client_id and m.user_id = p_user_id;
 
-  if exists (select 1 from public.client_memberships
-              where client_id = p_client_id and user_id = p_user_id
-                and status = 'active') then
-    update public.client_memberships set status = 'revoked'
-     where client_id = p_client_id and user_id = p_user_id;
+  perform app.audit(v_workspace_id, p_client_id, 'client_membership.revoked', 'user', p_user_id,
+                    jsonb_build_object('role', v_before.role, 'status', v_before.status),
+                    jsonb_build_object('role', v_before.role, 'status', 'revoked'));
 
-    perform app.audit(v_workspace_id, p_client_id, 'member.revoked', 'user', p_user_id, null, null);
-
-    select lower(u.email) into v_email from auth.users u where u.id = p_user_id;
-    if v_email is not null then
-      for v_revoked in
-        update public.invitations i set status = 'revoked'
-         where i.client_id = p_client_id and i.email = v_email and i.status = 'pending'
-        returning i.id
-      loop
-        perform app.audit(v_workspace_id, p_client_id, 'invitation.revoked', 'invitation', v_revoked,
-                          jsonb_build_object('status', 'pending'),
-                          jsonb_build_object('status', 'revoked', 'reason', 'membership revoked'));
-      end loop;
-    end if;
+  select lower(u.email) into v_email from auth.users u where u.id = p_user_id;
+  if v_email is not null then
+    for v_revoked in
+      update public.invitations i set status = 'revoked'
+       where i.client_id = p_client_id and i.email = v_email and i.status = 'pending'
+      returning i.id
+    loop
+      perform app.audit(v_workspace_id, p_client_id, 'invitation.revoked', 'invitation', v_revoked,
+                        jsonb_build_object('status', 'pending'),
+                        jsonb_build_object('status', 'revoked'));
+    end loop;
   end if;
 end;
 $$;

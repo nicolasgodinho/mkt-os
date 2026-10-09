@@ -9,7 +9,7 @@ import { isSlug } from '@/lib/identity/routing';
 import { createSupabaseWriter } from '@/lib/supabase/server';
 import { adminErrorMessage } from './errors';
 import { CLIENT_ROLES, invitationUrl, TOKEN, WORKSPACE_ROLES } from './model';
-import { publicOrigin } from './queries';
+import { publicOrigin } from '@/lib/public-origin';
 
 /**
  * Administration actions: they shape input and call the capability-checked database API with the
@@ -77,12 +77,12 @@ const settingsPaths = (slug: string) => [`/w/${slug}/settings`, `/w/${slug}/sett
 const clientAccessPath = (slug: string, clientId: string) =>
   `/w/${slug}/clients/${clientId}/access`;
 
-async function invitationMessage(data: unknown): Promise<ActionState> {
+function invitationMessage(origin: string, data: unknown): ActionState {
   const row = z.array(z.object({ token: z.string().regex(TOKEN) })).parse(data)[0];
   if (row === undefined) return INVALID;
   return {
     status: 'success',
-    message: `Convite criado. Envie este link para a pessoa (vale por 7 dias e só aparece agora): ${invitationUrl(await publicOrigin(), row.token)}`,
+    message: `Convite criado. Envie este link para a pessoa (vale por 7 dias e só aparece agora): ${invitationUrl(origin, row.token)}`,
   };
 }
 
@@ -98,6 +98,7 @@ export async function inviteWorkspaceMember(
     .safeParse(values(formData));
   if (!parsed.success) return INVALID;
   const f = parsed.data;
+  const origin = publicOrigin();
   const { failure, data } = await rpc(
     'invite_workspace_member',
     {
@@ -108,7 +109,7 @@ export async function inviteWorkspaceMember(
     },
     settingsPaths(f.workspaceSlug),
   );
-  return failure ?? invitationMessage(data);
+  return failure ?? invitationMessage(origin, data);
 }
 
 export async function setWorkspaceMember(
@@ -217,12 +218,13 @@ export async function inviteClientMember(
     .safeParse(values(formData));
   if (!parsed.success) return INVALID;
   const f = parsed.data;
+  const origin = publicOrigin();
   const { failure, data } = await rpc(
     'invite_client_member',
     { p_client_id: f.clientId, p_email: f.email, p_role: f.role, p_capabilities: f.capabilities },
     [clientAccessPath(f.workspaceSlug, f.clientId)],
   );
-  return failure ?? invitationMessage(data);
+  return failure ?? invitationMessage(origin, data);
 }
 
 export async function revokeClientMember(
@@ -302,7 +304,7 @@ export async function sendAccessLink(_p: ActionState, formData: FormData): Promi
   if (supabase === null) {
     return { status: 'error', message: 'A autenticação não está configurada neste ambiente.' };
   }
-  const origin = await publicOrigin();
+  const origin = publicOrigin();
   const { error } = await supabase.auth.signInWithOtp({
     email: f.email,
     options: {
